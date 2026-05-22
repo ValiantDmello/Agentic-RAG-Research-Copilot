@@ -1,0 +1,5 @@
+RAG ingestion sample text fixture.
+
+This file has multiple lines and normal punctuation.
+It is intended for basic plain-text extraction tests.
+Source marker: sample.txt

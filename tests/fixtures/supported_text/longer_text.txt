@@ -1,0 +1,12 @@
+Longer text fixture for chunking-style ingestion tests.
+
+Section 1: Overview
+A retrieval-augmented generation system often reads source files, extracts text, chunks it, embeds it, and stores vectors.
+
+Section 2: Details
+This fixture is intentionally longer than the other samples but still small enough to inspect quickly in a code review.
+It contains repeated terms such as ingestion, extraction, metadata, page number, source name, and validation.
+
+Section 3: Assertions
+Tests may assert that the first section, middle section, and final section are all present after ingestion.
+The final sentence is unique: fixture sentinel alpaca-river-42.
