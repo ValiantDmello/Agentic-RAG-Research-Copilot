@@ -24,6 +24,17 @@ The project has been initialized with `uv` and the base repository structure is 
 - Normalized ingestion output to `ExtractedPage` models
 - Added backend file path validation for missing paths and non-file inputs
 - Added clear errors for unsupported file types
+- Created [tests/test_ingestion.py](/abs/c:/Users/vvd09/OneDrive/Desktop/Vali/Projects/rag-project/tests/test_ingestion.py:1)
+- Created [tests/test_schemas.py](/abs/c:/Users/vvd09/OneDrive/Desktop/Vali/Projects/rag-project/tests/test_schemas.py:1)
+- Added fixture-based ingestion tests under `tests/fixtures/`
+- Tested `validate_file_path` for valid files, missing files, and directory inputs
+- Tested plain-text ingestion for `.txt` and `.md` files
+- Tested blank and whitespace-only plain-text files
+- Tested PDF ingestion for single-page, multi-page, and blank-page cases
+- Tested `extract_document_text` dispatch for supported and unsupported file types
+- Tested schema validation for empty text and negative `chunk_index`
+- Verified valid creation of `ExtractedPage`, `DocumentChunk`, and `RetrievedChunk`
+- Ran ingestion and schema tests successfully in small batches during implementation
 
 ## Current Schemas
 
@@ -33,16 +44,9 @@ The project has been initialized with `uv` and the base repository structure is 
 
 ## Next Step
 
-Add tests for [ingestion.py](/abs/c:/Users/vvd09/OneDrive/Desktop/Vali/Projects/rag-project/src/ingestion.py:1) to verify:
-
-- PDF extraction returns page-level `ExtractedPage` objects
-- TXT and Markdown files are ingested as one extracted page
-- missing paths and directory inputs raise clear errors
-- unsupported file types are rejected with a clear error
+Implement [chunking.py](/abs/c:/Users/vvd09/OneDrive/Desktop/Vali/Projects/rag-project/src/chunking.py:1) and add focused tests for chunk creation behavior.
 
 ## After That
 
-- implement `chunking.py`
-- add `tests/test_ingestion.py`
 - add `tests/test_chunking.py`
 - then move on to vector storage and retrieval
