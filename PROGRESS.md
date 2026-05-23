@@ -2,7 +2,7 @@
 
 ## Current Status
 
-The project has been initialized with `uv` and the base repository structure is in place.
+The project now has working ingestion, schemas, and text chunking in place for the RAG pipeline.
 
 ## Completed
 
@@ -35,6 +35,12 @@ The project has been initialized with `uv` and the base repository structure is 
 - Tested schema validation for empty text and negative `chunk_index`
 - Verified valid creation of `ExtractedPage`, `DocumentChunk`, and `RetrievedChunk`
 - Ran ingestion and schema tests successfully in small batches during implementation
+- Implemented [chunking.py](/abs/c:/Users/vvd09/OneDrive/Desktop/Vali/Projects/rag-project/src/chunking.py:1) with overlapping text chunking via `RecursiveCharacterTextSplitter`
+- Created [tests/test_chunking.py](/abs/c:/Users/vvd09/OneDrive/Desktop/Vali/Projects/rag-project/tests/test_chunking.py:1)
+- Tested long-text chunk splitting behavior
+- Tested chunk metadata preservation across multiple source pages
+- Tested empty input handling for chunk creation
+- Documented the reliable `uv run python -m pytest` test command in `README.md`
 
 ## Current Schemas
 
@@ -44,9 +50,9 @@ The project has been initialized with `uv` and the base repository structure is 
 
 ## Next Step
 
-Implement [chunking.py](/abs/c:/Users/vvd09/OneDrive/Desktop/Vali/Projects/rag-project/src/chunking.py:1) and add focused tests for chunk creation behavior.
+Implement vector storage and connect chunk output to embeddings and retrieval.
 
 ## After That
 
-- add `tests/test_chunking.py`
-- then move on to vector storage and retrieval
+- add vector-store tests
+- implement retrieval over stored chunks
