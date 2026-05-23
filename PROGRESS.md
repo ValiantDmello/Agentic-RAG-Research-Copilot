@@ -2,7 +2,7 @@
 
 ## Current Status
 
-The project now has working ingestion, schemas, and text chunking in place for the RAG pipeline.
+The project now has working ingestion, schemas, text chunking, and vector-store indexing in place for the RAG pipeline.
 
 ## Completed
 
@@ -41,6 +41,12 @@ The project now has working ingestion, schemas, and text chunking in place for t
 - Tested chunk metadata preservation across multiple source pages
 - Tested empty input handling for chunk creation
 - Documented the reliable `uv run python -m pytest` test command in `README.md`
+- Implemented [vector_store.py](/abs/c:/Users/vvd09/OneDrive/Desktop/Vali/Projects/rag-project/src/vector_store.py:1) with OpenAI embeddings and persistent Chroma storage
+- Added vector-store chunk-to-document conversion with stable `chunk_id` values and retrieval-friendly metadata
+- Created [tests/test_vector_store.py](/abs/c:/Users/vvd09/OneDrive/Desktop/Vali/Projects/rag-project/tests/test_vector_store.py:1)
+- Tested vector-store indexing behavior with mocked writes
+- Tested empty input handling for vector storage
+- Verified vector-store, chunking, and schema tests pass together with `PYTHONPATH=. uv run pytest tests/test_vector_store.py tests/test_chunking.py tests/test_schemas.py`
 
 ## Current Schemas
 
@@ -50,9 +56,9 @@ The project now has working ingestion, schemas, and text chunking in place for t
 
 ## Next Step
 
-Implement vector storage and connect chunk output to embeddings and retrieval.
+Implement retrieval over stored chunks and connect vector search results to the rest of the pipeline.
 
 ## After That
 
-- add vector-store tests
-- implement retrieval over stored chunks
+- connect ingestion and chunking into an end-to-end indexing flow
+- start wiring the agent workflow and answer grounding

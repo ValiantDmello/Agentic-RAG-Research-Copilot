@@ -51,7 +51,6 @@ uv run streamlit run app/ui.py
 
 ## Before Finishing a Task
 
-- Run relevant tests if available.
 - Check that new code does not expose secrets or private document contents in logs.
 - Update README or docs if setup, commands, or architecture changed.
 - Keep changes focused on the requested task.
@@ -60,3 +59,8 @@ uv run streamlit run app/ui.py
 ## Additional information
 - ./agentic_rag_implementation_guide.md
 - ./agentic_rag_srs.md
+
+
+## Don'ts
+
+- Do not run tests, I always do that manually. In case you are writing new tests, then you are allowed to run only those specific tests.
