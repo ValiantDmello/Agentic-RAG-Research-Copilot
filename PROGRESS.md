@@ -2,7 +2,7 @@
 
 ## Current Status
 
-The project now has working ingestion, schemas, text chunking, vector-store indexing, and retrieval in place for the RAG pipeline.
+The project now has working ingestion, schemas, text chunking, vector-store indexing, retrieval, and prompt templates in place for the RAG pipeline.
 
 ## Completed
 
@@ -53,6 +53,8 @@ The project now has working ingestion, schemas, text chunking, vector-store inde
 - Tested retriever behavior with mocked vector-store search results
 - Tested empty-result handling for retrieval
 - Verified retriever tests pass with `PYTHONPATH=. uv run pytest tests/test_retriever.py`
+- Implemented [prompts.py](src/prompts.py) with centralized prompt templates for query planning, evidence evaluation, grounded answers, and quiz generation
+- Added prompt rules that reinforce evidence-only answers, missing-evidence handling, and citation expectations
 
 ## Current Schemas
 
@@ -62,9 +64,9 @@ The project now has working ingestion, schemas, text chunking, vector-store inde
 
 ## Next Step
 
-Create the prompt templates and start wiring retrieval into the agent workflow.
+Build the LangGraph agent workflow and wire prompt-driven planning, retrieval, evidence evaluation, and answer generation together.
 
 ## After That
 
 - connect ingestion and chunking into an end-to-end indexing flow
-- start wiring the agent workflow and answer grounding
+- strengthen answer grounding and citation validation
