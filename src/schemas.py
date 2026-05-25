@@ -1,3 +1,5 @@
+from typing import TypedDict
+
 from pydantic import BaseModel, Field
 
 # Raw text extracted from a source file before we split it into chunks.
@@ -23,3 +25,13 @@ class RetrievedChunk(BaseModel):
     source: str
     page: int | None = None
     score: float | None = None
+
+
+# Shared state that flows through the LangGraph agent workflow.
+class AgentState(TypedDict):
+    question: str
+    rewritten_queries: list[str]
+    retrieved_chunks: list[RetrievedChunk]
+    evidence_sufficient: bool
+    answer: str
+    attempts: int
