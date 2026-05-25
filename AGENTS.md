@@ -59,7 +59,7 @@ uv run streamlit run app/ui.py
 ## Additional information
 - ./agentic_rag_implementation_guide.md
 - ./agentic_rag_srs.md
-
+- ./PROGRESS.md
 
 ## Don'ts
 

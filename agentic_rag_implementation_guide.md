@@ -660,7 +660,136 @@ def answer_question(question: str) -> dict:
 
 ---
 
-## 16. Step 13 — Build the Streamlit App
+## 16. Step 13 — Add Vector Store Utility Functions
+
+These helpers are useful for debugging ingestion, inspecting what is stored, and safely removing stale data without deleting the whole database every time.
+
+Update `src/vector_store.py`:
+
+```python
+from langchain_chroma import Chroma
+from langchain_core.documents import Document
+from langchain_openai import OpenAIEmbeddings
+
+from src.config import CHROMA_DIR, OPENAI_EMBEDDING_MODEL
+from src.schemas import DocumentChunk
+
+
+def get_embeddings() -> OpenAIEmbeddings:
+    return OpenAIEmbeddings(model=OPENAI_EMBEDDING_MODEL)
+
+
+def get_vector_store() -> Chroma:
+    return Chroma(
+        collection_name="agentic_rag_docs",
+        embedding_function=get_embeddings(),
+        persist_directory=CHROMA_DIR,
+    )
+
+
+def add_chunks_to_vector_store(chunks: list[DocumentChunk]) -> int:
+    vector_store = get_vector_store()
+
+    documents = []
+    ids = []
+
+    for chunk in chunks:
+        documents.append(
+            Document(
+                page_content=chunk.text,
+                metadata={
+                    "source": chunk.source,
+                    "page": chunk.page,
+                    "chunk_index": chunk.chunk_index,
+                    "chunk_id": chunk.chunk_id,
+                },
+            )
+        )
+        ids.append(chunk.chunk_id)
+
+    if documents:
+        vector_store.add_documents(documents=documents, ids=ids)
+
+    return len(documents)
+
+
+def get_vector_store_stats() -> dict:
+    collection = get_vector_store()._collection
+    payload = collection.get(include=["metadatas"])
+    metadatas = payload.get("metadatas", [])
+    sources = sorted(
+        {
+            metadata.get("source")
+            for metadata in metadatas
+            if metadata and metadata.get("source")
+        }
+    )
+
+    return {
+        "collection_name": collection.name,
+        "total_chunks": collection.count(),
+        "sources": sources,
+    }
+
+
+def list_chunk_metadata(limit: int = 50) -> list[dict]:
+    collection = get_vector_store()._collection
+    payload = collection.get(limit=limit, include=["metadatas"])
+    metadatas = payload.get("metadatas", [])
+    ids = payload.get("ids", [])
+
+    rows = []
+
+    for chunk_id, metadata in zip(ids, metadatas):
+        metadata = metadata or {}
+        rows.append(
+            {
+                "chunk_id": chunk_id,
+                "source": metadata.get("source"),
+                "page": metadata.get("page"),
+                "chunk_index": metadata.get("chunk_index"),
+            }
+        )
+
+    return rows
+
+
+def delete_chunks_by_source(source: str) -> int:
+    collection = get_vector_store()._collection
+    payload = collection.get(where={"source": source}, include=[])
+    ids = payload.get("ids", [])
+
+    if ids:
+        collection.delete(ids=ids)
+
+    return len(ids)
+
+
+def clear_vector_store() -> int:
+    collection = get_vector_store()._collection
+    count = collection.count()
+
+    if count:
+        payload = collection.get(include=[])
+        ids = payload.get("ids", [])
+        if ids:
+            collection.delete(ids=ids)
+
+    return count
+```
+
+Why these are useful:
+
+- `get_vector_store_stats()` helps verify that ingestion actually wrote chunks.
+- `list_chunk_metadata()` lets you inspect stored records without printing embeddings.
+- `delete_chunks_by_source()` is safer than clearing the full collection when re-ingesting one file.
+- `clear_vector_store()` is useful during development when you want a clean slate.
+
+You can keep these as backend utilities first, then optionally expose them later in a debug page, admin API, or Streamlit sidebar tools.
+
+---
+
+## 17. Step 14 — Build the Streamlit App
 
 Create `app.py`:
 
@@ -746,7 +875,7 @@ if st.button("Ask"):
 
 ---
 
-## 17. Step 14 — Run the App
+## 18. Step 15 — Run the App
 
 Run:
 
@@ -764,7 +893,7 @@ http://localhost:8501
 
 ---
 
-## 18. Step 15 — Test the MVP Manually
+## 19. Step 16 — Test the MVP Manually
 
 Use a small PDF or Markdown file first.
 
@@ -796,7 +925,7 @@ The system should say the document does not provide enough information.
 
 ---
 
-## 19. Step 16 — Add Basic Tests
+## 20. Step 17 — Add Basic Tests
 
 Create `tests/test_chunking.py`:
 
@@ -844,7 +973,7 @@ uv run pytest
 
 ---
 
-## 20. Step 17 — Add Better Citation Formatting
+## 21. Step 18 — Add Better Citation Formatting
 
 The MVP prompt asks the LLM to cite sources. For a stronger version, add citation labels before answer generation.
 
@@ -878,7 +1007,7 @@ This makes citations easier to verify.
 
 ---
 
-## 21. Step 18 — Add a Grounding Checker
+## 22. Step 19 — Add a Grounding Checker
 
 Add this prompt to `src/prompts.py`:
 
@@ -940,7 +1069,7 @@ from src.agent import answer_question, check_grounding
 
 ---
 
-## 22. Step 19 — Add Duplicate File Protection
+## 23. Step 20 — Add Duplicate File Protection
 
 Create `src/utils.py`:
 
@@ -1008,7 +1137,7 @@ record_ingested(hash_value)
 
 ---
 
-## 23. Step 20 — Add FastAPI Backend, Optional
+## 24. Step 21 — Add FastAPI Backend, Optional
 
 For a cleaner production-style architecture, you can add FastAPI.
 
@@ -1076,7 +1205,7 @@ http://localhost:8000/docs
 
 ---
 
-## 24. Step 21 — Improve Retrieval Quality
+## 25. Step 22 — Improve Retrieval Quality
 
 After the MVP works, improve retrieval with these upgrades.
 
@@ -1115,7 +1244,7 @@ This is optional and usually not needed for the first MVP.
 
 ---
 
-## 25. Step 22 — Improve the Agent
+## 26. Step 23 — Improve the Agent
 
 The first agent workflow is intentionally simple. Possible improvements:
 
@@ -1156,7 +1285,7 @@ This makes the agent easier to control.
 
 ---
 
-## 26. Step 23 — Add Evaluation Dataset
+## 27. Step 24 — Add Evaluation Dataset
 
 Create a small folder:
 
@@ -1187,7 +1316,7 @@ Create an evaluation script later that checks:
 
 ---
 
-## 27. Step 24 — Deployment Options
+## 28. Step 25 — Deployment Options
 
 ### Option A: Streamlit Community Cloud
 
@@ -1246,7 +1375,7 @@ docker run -p 8501:8501 --env-file .env agentic-rag-copilot
 
 ---
 
-## 28. Step 25 — Common Errors and Fixes
+## 29. Step 26 — Common Errors and Fixes
 
 ### Error: `OPENAI_API_KEY is missing`
 
@@ -1315,7 +1444,7 @@ Fixes:
 
 ---
 
-## 29. Step 26 — Suggested Development Timeline
+## 30. Step 27 — Suggested Development Timeline
 
 ### Day 1
 
@@ -1353,7 +1482,7 @@ Fixes:
 
 ---
 
-## 30. Final Checklist
+## 31. Final Checklist
 
 Before calling the project complete, verify:
 
@@ -1374,7 +1503,7 @@ Before calling the project complete, verify:
 
 ---
 
-## 31. Recommended Next Enhancements
+## 32. Recommended Next Enhancements
 
 Once the MVP works, add:
 

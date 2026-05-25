@@ -1,0 +1,13 @@
+Northstar Benefits Group - Agentic RAG Test Corpus
+Mixed-format package
+
+This archive contains the original Markdown/TXT corpus plus PDF variants of five representative documents. The PDFs are intended to test ingestion paths for formatted documents, pagination, tables rendered as text, headers, version history sections, and long-form business documents.
+
+Included PDF variants:
+- 01_project_meridian_prd.pdf
+- 02_meridian_architecture_design.pdf
+- 04_compliance_security_handbook.pdf
+- 05_incident_postmortem_intake_classifier.pdf
+- 10_project_meridian_roadmap.pdf
+
+The Markdown versions are retained so the same content can be tested across formats and compared for retrieval behavior.

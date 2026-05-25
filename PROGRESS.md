@@ -2,7 +2,7 @@
 
 ## Current Status
 
-The project now has working ingestion, schemas, text chunking, vector-store indexing, retrieval, prompt templates, and a complete Step 12 LangGraph agent workflow in place for the RAG pipeline.
+The project now has a working Streamlit app on top of the RAG pipeline, including document upload, ingestion, vector-store indexing, LangGraph-based question answering, and UI rendering of grounded results and retrieved evidence.
 
 ## Completed
 
@@ -104,6 +104,34 @@ The project now has working ingestion, schemas, text chunking, vector-store inde
 - Updated [agentic_rag_implementation_guide.md](agentic_rag_implementation_guide.md) with optional improvements discovered during implementation:
   - preserving query history across retries
   - documenting the tradeoff between cheap chunk merging and later evidence filtering
+- Added the Streamlit app entrypoint in [app.py](app.py)
+- Created a Streamlit layout with:
+  - a sidebar for document upload and ingestion
+  - a main question input area
+  - persisted answer and evidence display
+- Added startup creation of the upload directory with `Path(UPLOAD_DIR).mkdir(...)`
+- Implemented `_ensure_session_state()` so ingestion feedback and the latest question/answer survive Streamlit reruns
+- Implemented `_ingest_uploaded_files()` to:
+  - save uploaded files into the configured upload directory
+  - extract text from PDF, TXT, and Markdown files
+  - chunk document text
+  - index chunks into the vector store
+  - collect per-file success and error messages
+  - track the total number of chunks added
+- Implemented `_display_ingestion_messages()` to render persisted ingestion feedback in the sidebar
+- Implemented `_run_question()` to validate the prompt, execute `answer_question()`, and persist the latest workflow result
+- Implemented `_render_result()` to display:
+  - the final answer
+  - the original question
+  - evidence sufficiency and retrieval-attempt metadata
+  - the planned search queries
+  - the retrieved evidence with source, page, score, and chunk text
+- Connected the Streamlit app end-to-end to the ingestion, chunking, vector-store, and LangGraph workflow modules
+- Added a user-facing empty-question warning in the app
+- Added a user-facing empty-upload warning in the app
+- Added a loading spinner around workflow execution in the app
+- Configured the Streamlit page title, icon, and wide layout
+- Added a document-ingestion action flow that supports multiple uploaded files in one run
 
 ## Step 12 Implementation History
 
@@ -142,12 +170,22 @@ Important design decisions made during implementation:
 - `RetrievedChunk`: retrieved search result with optional relevance metadata
 - `AgentState`: shared LangGraph workflow state for question, rewritten queries, retrieved chunks, evidence sufficiency, answer text, and attempt count
 
+## Current App State
+
+- Users can upload `pdf`, `txt`, and `md` files from the sidebar
+- Uploaded files are saved locally, ingested, chunked, and added to Chroma
+- Users can ask a question in the main panel and run the LangGraph workflow
+- The UI shows the final answer, workflow metadata, planned queries, and retrieved evidence
+- Ingestion feedback persists across reruns through Streamlit session state
+- The latest answer also persists across reruns through Streamlit session state
+
 ## Next Step
 
-Integrate `answer_question()` into the app flow and manually exercise the workflow with ingested documents so the new LangGraph path can be observed end-to-end.
+Manually exercise the Streamlit app with a realistic multi-document dataset and evaluate answer quality, citation behavior, and failure handling when evidence is weak or missing.
 
 ## After That
 
-- connect ingestion and chunking into an end-to-end indexing flow
 - strengthen answer grounding and citation validation
+- add duplicate-file protection during ingestion
+- consider a grounding report in the UI
 - decide later whether to keep console tracing always-on or gate it behind a debug flag

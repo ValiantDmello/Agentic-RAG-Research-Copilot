@@ -1,0 +1,1295 @@
+# Overview
+
+Fictional organization: **Northstar Benefits Group (NBG)**
+
+Domain: **Fintech / insurance benefits administration SaaS**
+
+Northstar Benefits Group operates a SaaS platform called **Polaris Claims Hub**, used by mid-market employers, brokers, and third-party administrators to intake employee benefit claims, validate eligibility, route evidence to adjudication teams, and synchronize claim outcomes with payroll and carrier systems. The uploaded document set is designed to look like an internal production knowledge base for a regulated software organization preparing a major workflow modernization release called **Project Meridian**.
+
+The files include product requirements, architecture notes, incident response materials, operations guidance, compliance rules, business review artifacts, meeting decisions, customer onboarding instructions, support knowledge base material, and roadmap planning. Facts are intentionally distributed across documents with overlapping terminology and a few realistic ambiguities, so a RAG system can be tested on grounded retrieval, comparison, citation, missing-evidence handling, and conflict detection.
+
+
+===== DOCUMENT START =====
+filename: 01_project_meridian_prd.md
+document type: Product Requirements Document
+
+# Project Meridian Product Requirements Document
+
+**Filename:** 01_project_meridian_prd.md  
+**Document type:** Product Requirements Document  
+**Date:** 2026-02-14  
+**Owner:** Priya Menon, Director of Product  
+**Status:** Approved for phased rollout  
+**Related documents:** 02_meridian_architecture_design.md, 07_decision_log_meridian.md, 10_project_meridian_roadmap.md
+
+## Version History
+
+| Version | Date | Author | Notes |
+|---|---:|---|---|
+| 0.6 | 2025-11-18 | Priya Menon | Initial draft based on broker advisory board feedback |
+| 0.9 | 2026-01-09 | Priya Menon / Evan Cho | Added audit export and carrier synchronization requirements |
+| 1.0 | 2026-02-14 | Product Council | Approved with exception for bulk evidence upload in Phase 2 |
+| 1.1 | 2026-03-03 | Priya Menon | Clarified retention references and amended claims reopen flow |
+
+## Purpose Summary
+
+Project Meridian modernizes the intake, evidence review, and adjudication workflow in Polaris Claims Hub. The goal is to replace several ticket-style queues with a rules-guided claim workspace that provides explainable recommendations, better audit capture, and improved service-level tracking for Support and Operations.
+
+## Background
+
+Northstar Benefits Group has historically processed claim-related work through a combination of claim records, queue filters, manual notes, carrier portal screenshots, and separate broker escalations. The Polaris Claims Hub product grew quickly after the 2024 acquisition of LumenBridge TPA Services, and the inherited workflows still show that history. Different customers use terms such as “case,” “claim,” “matter,” “benefit event,” and “packet.” Internally, Product and Platform Engineering agreed in Decision D-014 to standardize the product language around “claim” while keeping import aliases for legacy customers.
+
+Three customer cohorts drove the Meridian scope:
+
+1. Employers with more than 4,000 covered lives that require predictable evidence collection.
+2. Broker partners who need visibility into claim delays without seeing protected medical details.
+3. Internal Operations teams that want queue metrics by plan, state, carrier, and reason code.
+
+The original plan, circulated in Q4 2025, targeted one large launch in April 2026. That approach changed after an intake-classification incident on January 22, 2026 and after Security requested additional event tracing. The current plan is a phased rollout beginning with read-only recommendations and limited-action adjudication tools.
+
+## Goals
+
+Meridian must make claim handling faster, more auditable, and easier to explain without increasing compliance risk. The product goals are:
+
+- Reduce median time from claim submission to first human review from 18.6 business hours to 8 business hours for configured customers.
+- Reduce duplicate evidence requests by at least 30 percent compared with Q4 2025.
+- Provide a claim workspace that shows evidence status, eligibility status, plan rules, decision history, carrier sync state, and pending customer actions in one screen.
+- Capture immutable event history for claim intake, routing, document review, recommendation display, adjudicator override, and outbound carrier sync.
+- Allow Support to answer “why is this claim delayed?” without exposing restricted medical evidence to broker-only users.
+- Improve operational reporting by exposing queue aging, blocked reasons, and plan-specific exception counts.
+
+## Non-Goals
+
+Meridian is not a replacement for carrier adjudication engines. It does not make final medical necessity decisions. It does not introduce automated denial. It does not provide machine-generated explanations to employees. It does not change contractual plan terms or customer-specific service-level agreements.
+
+The PRD explicitly excludes: automated adverse-benefit determinations, medical code interpretation, long-term disability adjudication, and direct payroll debit initiation. Payroll file export remains a separate LedgerBridge module owned by Finance Systems.
+
+## Personas
+
+**Operations Adjudicator:** Reviews evidence, confirms eligibility, requests missing documents, and records claim outcomes. Needs a complete view of a claim without switching between queue, document viewer, plan table, and carrier notes.
+
+**Support Specialist:** Answers employer and broker questions about claim status. Needs safe summary fields and escalation reasons, not full medical detail.
+
+**Customer Benefits Administrator:** Uploads evidence, monitors claim status, and responds to missing information requests. Needs clear instructions, deadline visibility, and confirmation that uploads were received.
+
+**Security and Compliance Reviewer:** Audits access and event history. Needs evidence of who viewed or changed claim data, why recommendations were shown, and whether retention policies were followed.
+
+**Carrier Integration Analyst:** Monitors outbound synchronization to carriers. Needs retry states, mapping errors, and plan-specific carrier identifiers.
+
+## Scope
+
+Meridian covers short-term disability, supplemental accident, hospital indemnity, and critical illness claims for customers using Polaris Claims Hub. Phase 1 excludes dental, vision, workers’ compensation, and long-term disability. Imported claims from the legacy LumenBridge portal are included only if they have a current claim identifier and an active employer group mapping.
+
+## Functional Requirements
+
+### FR-1: Unified Claim Workspace
+
+The workspace must show claim summary, member identity, employer group, plan, benefit type, intake source, assigned queue, evidence list, pending tasks, decision history, and carrier sync state. Fields containing medical evidence details must be hidden from broker role profiles unless the customer has a signed broker PHI access addendum and the Security team has enabled the broker-phi-view feature flag.
+
+### FR-2: Evidence Checklist
+
+The system must generate a checklist of required evidence based on benefit type, employer group, state jurisdiction, and carrier configuration. For example, a supplemental accident claim may require an incident report, treating provider statement, employee attestation, and employer confirmation of coverage. If a customer-specific plan document overrides the default carrier checklist, the workspace must display the customer-specific requirement and record the source of the rule.
+
+### FR-3: Recommendation Banner
+
+The workspace may display non-binding recommendations such as “eligible for review,” “missing provider statement,” “possible duplicate claim,” or “carrier mapping error.” Recommendations must include a reason code, input facts used, and a timestamp. Recommendations must not say that a claim should be denied. The language restriction came from Compliance review on 2026-01-31.
+
+### FR-4: Adjudicator Override
+
+Authorized adjudicators may override a recommendation. The system must require an override reason selected from a controlled list plus optional free text. Controlled reasons include customer exception, plan document ambiguity, evidence sufficient after manual review, duplicate dismissed, carrier instruction, and other. The override event must include user ID, timestamp, prior recommendation, new status, and reason.
+
+### FR-5: Status Model
+
+The claim status model uses the following public statuses: received, pending information, under review, sent to carrier, decision received, closed, reopened. Internal statuses include intake_pending, classification_pending, reviewer_assigned, evidence_blocked, carrier_sync_pending, carrier_sync_failed, audit_hold, and manual_exception. Public statuses should never expose audit_hold.
+
+### FR-6: Missing Information Requests
+
+Adjudicators must be able to send missing information requests using approved templates. Templates may be customized by employer group but must retain required compliance language. Requests can be sent through portal notification and email. SMS is out of scope for Phase 1.
+
+### FR-7: Audit Export
+
+Compliance users must be able to export claim event history for a claim or batch of claims. Audit export must include event name, actor, role, timestamp, source IP when available, old value, new value, and evidence reference ID. Export format is CSV in Phase 1, with signed JSON planned for later. Export jobs must be logged as audit events themselves.
+
+### FR-8: Carrier Synchronization Visibility
+
+The workspace must show whether outbound carrier sync is pending, successful, failed, or manually suppressed. It must display the last attempt time, error category, retry count, and integration owner. This requirement was added after multiple brokers complained that Support could not distinguish carrier downtime from internal review delays.
+
+### FR-9: Role-Based Views
+
+Role profiles must be centrally managed. Product accepts the existing role model from the compliance handbook, with one addition: the Carrier Integration Analyst role can view carrier mapping metadata and sync payload status but cannot view uploaded medical evidence unless separately assigned reviewer access.
+
+### FR-10: Reporting Events
+
+The event stream must publish claim_received, evidence_uploaded, checklist_generated, recommendation_displayed, recommendation_overridden, missing_info_requested, claim_sent_to_carrier, carrier_sync_failed, claim_reopened, and claim_closed. These events feed Operations dashboards and quarterly business reporting.
+
+## Data and Retention Requirements
+
+The PRD references the retention policy in the Compliance Handbook. Claim records and evidence metadata are retained for seven years after claim closure unless a customer contract or legal hold requires a longer period. Uploaded evidence files are retained for seven years after closure for regulated lines in Phase 1. The Architecture Design notes an implementation target of seven years plus 30 days to account for asynchronous deletion queues; Product considers that an implementation buffer, not a separate policy.
+
+Recommendation inputs and outputs must be retained with the claim event history. Temporary classification artifacts that do not become audit events should be deleted within 30 days. Security requested that raw extracted text from uploaded evidence not be persisted outside the document service, except for indexed snippets necessary for search and retrieval within the tenant boundary.
+
+## Metrics
+
+Primary launch metrics:
+- Median time to first human review.
+- Percent of claims with duplicate evidence requests.
+- Percent of claims with complete event history.
+- Recommendation override rate by reason code.
+- Carrier sync success rate within two hours of final internal review.
+- Number of Support escalations tagged “status unclear.”
+
+Guardrail metrics:
+- Unauthorized access incidents.
+- Missing audit event defects.
+- Increase in claim reopen rate.
+- Carrier sync retries per 1,000 claims.
+- Customer-reported confusion about missing information templates.
+
+## Launch Criteria
+
+Phase 1 requires the following:
+
+- Successful completion of security review for workspace permissions.
+- Event stream validation in staging with at least 25 synthetic claims.
+- Compliance approval of recommendation wording.
+- Operations training for two pilot teams.
+- Customer onboarding guide updated for Meridian-specific evidence steps.
+- Runbook updated with carrier sync failure process.
+- No unresolved Sev-1 or Sev-2 defects.
+
+The original launch criteria included bulk evidence upload, but that requirement moved to Phase 2 because document deduplication accuracy was below target during February testing.
+
+## Open Questions
+
+1. Should reopened claims preserve original SLA timers or start a new internal review timer?
+2. Can Support see a checklist item label if the label implies a medical condition?
+3. Should carrier sync failures be visible to employer administrators or only to internal teams?
+4. Does the seven-year retention period begin at claim closure or final carrier decision for claims closed internally before a carrier response?
+5. Who owns template localization for customers operating in Quebec?
+
+## Risks
+
+The largest product risk is that recommendations will be interpreted as automated decisions. Product mitigates this through non-binding language, explicit reason codes, and override capture. The largest operational risk is partial rollout confusion, since some customers will see Meridian workspace fields while others remain on legacy queues. The largest technical risk is event-order inconsistency between the claim service, document service, and integration service.
+
+## Appendix A: Sample Claim Timeline
+
+A typical claim may be received on Monday morning through the employer portal, classified as supplemental accident, assigned to Team Cedar, and flagged as missing an incident report. The adjudicator requests missing information, the customer uploads the report, and the recommendation changes to eligible for review. The adjudicator records an approval outcome and sends the claim to the carrier. Carrier sync fails once due to a mapping error and succeeds after the integration analyst corrects the carrier employer group ID. Each step must be visible in the claim event history.
+
+## Appendix B: Terminology
+
+The word “packet” appears in older LumenBridge documentation and customer materials. In Meridian UI, the preferred term is “claim evidence package.” The word “case” remains in a few Support macros, but Product has asked Support Operations to retire it by the end of Q2 2026.
+
+===== DOCUMENT END =====
+
+===== DOCUMENT START =====
+filename: 02_meridian_architecture_design.md
+document type: Technical Architecture / Design Document
+
+# Meridian Technical Architecture and Design
+
+**Filename:** 02_meridian_architecture_design.md  
+**Document type:** Technical Architecture / Design Document  
+**Date:** 2026-02-28  
+**Owner:** Evan Cho, Principal Engineer  
+**Status:** Architecture Review Board accepted with conditions  
+**Related documents:** 01_project_meridian_prd.md, 03_operations_runbook_meridian.md, 05_incident_postmortem_intake_classifier.md
+
+## Purpose Summary
+
+This document describes the technical design for Meridian’s claim workspace, recommendation service, event capture, document handling, and carrier synchronization. It is written for Platform Engineering, Security, Site Reliability Engineering, and Integration Engineering.
+
+## Executive Summary
+
+Meridian introduces an event-centered claim workflow layered on existing Polaris Claims Hub services. It does not replace the core Claim Service in Phase 1. Instead, it adds a Claim Workspace API, a Checklist and Recommendation Service, enhanced audit event publishing, and an integration status adapter. The architecture prioritizes traceability and tenant isolation over aggressive automation.
+
+The central design choice is to treat recommendations as explainable workflow aids rather than decisions. The Recommendation Service emits a recommendation_displayed event only after storing the input fact references used to generate the recommendation. Adjudicator actions remain authoritative. No recommendation directly changes a public claim status.
+
+## Current System Context
+
+Before Meridian, the main services were:
+
+- Claim Service: owns claim lifecycle state, internal status, public status, assignee, and basic plan metadata.
+- Document Service: owns evidence file upload, malware scan status, OCR output, document type, and evidence references.
+- Eligibility Service: owns member coverage windows, employment status, plan enrollment, and eligibility exceptions.
+- Integration Service: handles outbound carrier payloads and retry scheduling.
+- Audit Service: receives events and stores append-only audit records.
+- Portal UI: used by employer administrators and some brokers.
+- Operations Console: used by internal adjudicators and Support.
+
+The system already had audit events for uploads and status changes, but it did not consistently capture recommendation display, checklist rule source, or carrier mapping failures. This gap contributed to confusion during the January 2026 incident.
+
+## Proposed Components
+
+### Claim Workspace API
+
+The Claim Workspace API composes data from Claim Service, Document Service, Eligibility Service, and Integration Service. It does not own source-of-truth claim state. The API provides a role-filtered view of the workspace. It must call the Authorization Gateway before returning any PHI-bearing fields.
+
+Key endpoints:
+
+- GET /workspace/claims/{claimId}
+- GET /workspace/claims/{claimId}/timeline
+- POST /workspace/claims/{claimId}/override-recommendation
+- POST /workspace/claims/{claimId}/missing-info-request
+- GET /workspace/claims/{claimId}/carrier-sync
+
+### Checklist and Recommendation Service
+
+This service evaluates checklist rules and workflow recommendations. It receives claim references, not full document contents. It reads only metadata required for checklist evaluation: benefit type, state, employer group, carrier code, plan identifier, document type, evidence status, and eligibility flags. It must not persist raw OCR text.
+
+Rules are versioned. Each checklist item must record a rule_source field. Sources may include default_carrier_rule, employer_plan_override, state_requirement, compliance_hold, or manual_exception. The service emits checklist_generated and recommendation_displayed events.
+
+### Event Publisher Library
+
+To reduce missing audit events, Meridian introduces a shared publisher library used by Workspace API, Recommendation Service, and Integration Service. The library enforces event schema validation, tenant ID presence, actor identity, and idempotency key generation. Services publish to the Polaris event bus, and Audit Service subscribes to claim workflow topics.
+
+### Integration Status Adapter
+
+The adapter normalizes carrier sync information from Integration Service. Carrier systems use inconsistent response codes. The adapter maps these to pending, succeeded, failed_retryable, failed_non_retryable, suppressed, and unknown. The UI displays user-friendly labels but preserves raw codes in internal logs.
+
+## Data Flow
+
+1. A claim enters Claim Service through portal intake, API intake, or manual creation.
+2. Claim Service emits claim_received.
+3. Document Service receives evidence uploads and emits evidence_uploaded after malware scan passes. Failed scan events are restricted to Security and SRE.
+4. Checklist and Recommendation Service evaluates rules after claim metadata or evidence metadata changes.
+5. Recommendation Service stores the recommendation record with fact references and emits recommendation_displayed.
+6. Claim Workspace API displays role-filtered claim state, evidence status, checklist, recommendation, and integration state.
+7. Adjudicator override or missing information request triggers Workspace API write endpoints.
+8. Integration Service sends outbound payloads to carriers after final internal review.
+9. Integration Status Adapter updates carrier sync state and publishes carrier_sync_failed or claim_sent_to_carrier events.
+10. Audit Service stores append-only records and supports export.
+
+## Event Model
+
+All Meridian events must include:
+
+- tenant_id
+- claim_id
+- event_name
+- actor_type
+- actor_id or system_actor
+- timestamp_utc
+- request_id
+- idempotency_key
+- schema_version
+- source_service
+- prior_value when applicable
+- new_value when applicable
+- evidence_reference_id when applicable
+
+The event schema intentionally avoids embedding full evidence content. Evidence references are stable identifiers that can be resolved only by authorized services.
+
+Event ordering is best-effort across services. Audit Service stores ingestion time and event timestamp. For user-facing timelines, the Workspace API sorts by event timestamp and then ingestion time. If timestamps differ by more than five minutes, the timeline displays a “sequence uncertain” marker to internal users. This marker is hidden from customers.
+
+## Storage
+
+Meridian stores additional workflow data in three tables:
+
+### meridian_recommendations
+
+Fields include recommendation_id, tenant_id, claim_id, recommendation_type, reason_code, displayed_text_key, input_fact_hash, input_fact_references, created_at, expires_at, schema_version, and suppressed_flag.
+
+### meridian_checklist_items
+
+Fields include checklist_item_id, tenant_id, claim_id, requirement_key, display_label_key, status, rule_source, source_rule_version, first_generated_at, last_updated_at, and resolved_at.
+
+### carrier_sync_status_cache
+
+Fields include tenant_id, claim_id, carrier_code, integration_job_id, normalized_status, raw_status_code, last_attempt_at, retry_count, next_retry_at, owner_team, and manually_suppressed_by.
+
+These tables are not the system of record for final claim decisions. Claim Service remains the source of truth for public status and internal status.
+
+## Retention Design
+
+The Compliance Handbook defines retention as seven years after claim closure unless contract or legal hold requires longer. The design implements deletion eligibility at seven years plus 30 days after closure to account for delayed carrier callbacks, retry queues, backup snapshots, and operational reconciliation. This additional 30-day period is intended as a deletion processing buffer, not a new business retention rule.
+
+Temporary recommendation evaluation traces that are not referenced by an audit event are deleted after 30 days. Recommendation records that were displayed to a user are retained with the claim audit history. OCR text remains in Document Service. Search indexes that include evidence-derived snippets must remain tenant-scoped and are purged according to Document Service retention schedules.
+
+## Security Controls
+
+Authorization Gateway is mandatory for all workspace reads. The API must pass requested field categories: claim_summary, eligibility_summary, evidence_metadata, evidence_content, carrier_sync_metadata, audit_history, and recommendation_details.
+
+The broker role cannot view evidence_content by default. A broker can view limited evidence_metadata such as “provider statement received” only when the customer has enabled broker operational visibility. The broker-phi-view feature flag requires Security approval and a signed addendum.
+
+Service-to-service calls use mTLS. Event bus topics are tenant-partitioned. Audit Service validates tenant ID and rejects cross-tenant event writes. All admin impersonation events must include original_actor_id and impersonation_reason.
+
+## Failure Modes
+
+If Recommendation Service is unavailable, the workspace should display claim data without recommendations and emit recommendation_unavailable_metric, but it must not block adjudicator review. If Checklist Service is unavailable, missing information templates may be disabled, because templates depend on checklist rule source.
+
+If Audit Service is unavailable, write operations that change claim state must fail closed. Read-only workspace views may remain available. This differs from the older Operations Console, which allowed some status changes when audit ingestion lagged. The new behavior was required by Security Review SR-2026-02-MER.
+
+If Integration Service is unavailable, carrier sync state should show “pending carrier transmission” and SRE should be paged only if retry backlog exceeds threshold for 30 minutes.
+
+## Observability
+
+Required metrics include workspace_api_latency, workspace_authz_denied, recommendation_eval_latency, recommendation_display_count, recommendation_override_count, checklist_generation_failure, audit_publish_failure, carrier_sync_status_lag, and carrier_retry_backlog.
+
+Required logs must include request_id, tenant_id, claim_id hash, source_service, actor_type, actor_id hash, and error category. Logs must not include full member name, SSN, diagnosis detail, uploaded evidence body, or claim notes containing PHI.
+
+Distributed traces should follow request flow from Workspace API to downstream services. SRE noted that tracing headers are sometimes dropped by the legacy LumenBridge importer; fixing that importer is a Phase 2 task.
+
+## Rollout Plan
+
+Architecture supports feature flags at tenant, employer group, and role level. Pilot tenants are Ashvale Manufacturing, BluePeak Retail Group, and Corvus BioSystems. The Architecture Review Board required read-only workspace launch before write actions. The rollout sequence is:
+
+1. Internal synthetic tenant testing.
+2. Internal Operations read-only pilot.
+3. Customer pilot with read-only recommendations.
+4. Enable missing information request action.
+5. Enable adjudicator override.
+6. Enable carrier sync status display.
+7. Retire legacy queue page for pilot tenants.
+
+## Migration Considerations
+
+Legacy LumenBridge claims use packet_id rather than claim_id. Migration maps packet_id to claim_id through the legacy_claim_alias table. If a packet lacks a current employer group mapping, it remains on the legacy queue. The migration job must not infer mappings based on employee name or email.
+
+Existing documents with unknown evidence type are surfaced as “unclassified evidence.” Checklist Service may recommend manual classification, but it must not mark a required evidence item complete based on unknown type.
+
+## Open Technical Decisions
+
+- Whether to store recommendation input facts as structured JSON or hashed references with resolver metadata.
+- Whether carrier_sync_status_cache should be populated synchronously after final review or asynchronously through event subscription.
+- Whether to include audit export generation in Workspace API or keep it in Compliance Console.
+- Whether the UI should display sequence uncertainty when event ordering is ambiguous.
+
+## Accepted Conditions
+
+The Architecture Review Board accepted the design on 2026-02-28 with the following conditions:
+
+1. Security must review broker role filtering before customer pilot.
+2. SRE must define pager thresholds for carrier retry backlog.
+3. Product must confirm wording for recommendation banners.
+4. Compliance must approve the audit export field list.
+5. Platform must demonstrate tenant isolation tests before enabling customer data.
+
+## Appendix: Example Event
+
+```
+event_name: recommendation_displayed
+tenant_id: tnt_ashvale
+claim_id: clm_782812
+actor_type: system
+system_actor: meridian_recommendation_service
+timestamp_utc: 2026-02-21T14:22:05Z
+reason_code: missing_provider_statement
+input_fact_references:
+  - claim.benefit_type
+  - evidence.provider_statement.status
+  - eligibility.coverage_active
+schema_version: 1.0
+```
+
+===== DOCUMENT END =====
+
+===== DOCUMENT START =====
+filename: 03_operations_runbook_meridian.md
+document type: Operations Runbook
+
+# Meridian Operations Runbook
+
+**Filename:** 03_operations_runbook_meridian.md  
+**Document type:** Operations Runbook  
+**Date:** 2026-03-12  
+**Owner:** Lena Ortiz, Senior SRE Manager  
+**Status:** Active for pilot tenants  
+**Related documents:** 02_meridian_architecture_design.md, 05_incident_postmortem_intake_classifier.md, 09_support_kb_meridian.md
+
+## Purpose Summary
+
+This runbook describes how Support Operations, SRE, Platform Engineering, and Integration Engineering should monitor and respond to Meridian workspace issues during pilot and staged rollout.
+
+## Scope
+
+This runbook applies to Meridian-enabled tenants in Polaris Claims Hub. As of 2026-03-12, enabled pilot tenants are Ashvale Manufacturing, BluePeak Retail Group, and Corvus BioSystems. The runbook covers workspace loading failures, authorization denials, recommendation unavailability, audit publish failures, checklist errors, and carrier synchronization backlog.
+
+## Team Responsibilities
+
+**Support Operations** triages customer-visible issues, confirms tenant and role, checks the Support KB, gathers claim identifiers, and escalates to SRE or Platform Engineering when customer impact is confirmed. Support should not request screenshots that expose medical evidence unless a secure upload channel is used.
+
+**SRE** owns incident coordination, service health, alert thresholds, paging, rollback, and post-incident timeline capture. SRE also owns the synthetic tenant monitor that creates a test claim, uploads mock evidence, and validates checklist generation every four hours.
+
+**Platform Engineering** owns Workspace API, Recommendation Service, Checklist Service, event publisher library, and the UI shell used by Operations Console.
+
+**Integration Engineering** owns carrier sync status, outbound payload retries, mapping errors, and Integration Status Adapter.
+
+**Security** owns access-control validation and investigations involving suspected unauthorized access.
+
+## Severity Definitions
+
+Sev-1: Unauthorized access to restricted evidence, cross-tenant data exposure, or widespread inability to process claims for all Meridian tenants. Immediate incident response required.
+
+Sev-2: Claim-changing actions unavailable for more than 30 minutes for pilot tenants, audit event publish failure for state-changing actions, or carrier sync backlog exceeding threshold for more than 60 minutes.
+
+Sev-3: Recommendation banners unavailable while workspace remains usable, delayed checklist generation, single-tenant carrier mapping error, or Support-only reporting issues.
+
+Sev-4: Cosmetic UI issue, stale non-critical dashboard, or documentation mismatch.
+
+## Standard Triage Checklist
+
+1. Confirm tenant name, employer group, claim ID, user role, and browser or API source.
+2. Check whether tenant has Meridian feature flag enabled.
+3. Determine whether the issue affects read-only workspace, write action, recommendation, checklist, audit timeline, or carrier sync.
+4. Check current status of Workspace API, Recommendation Service, Checklist Service, Audit Service, and Integration Service.
+5. Review logs using request_id where available. Do not search by employee name.
+6. Confirm whether the user is authorized for the field category in question.
+7. If customer-visible, create an incident channel and assign a commander for Sev-1 or Sev-2.
+
+## Workspace Does Not Load
+
+A workspace load failure usually appears as an HTTP 500, timeout, or blank panel. First check Workspace API latency and downstream dependency errors. If Authorization Gateway denies access, the UI should show a permissions message rather than a blank page.
+
+Common causes:
+- Claim ID belongs to a non-Meridian tenant.
+- Legacy LumenBridge packet lacks claim alias mapping.
+- Authorization Gateway has stale role cache.
+- Eligibility Service timeout.
+- Workspace API deploy with incompatible response schema.
+
+Mitigation:
+- For stale role cache, flush the tenant role cache using the internal admin job after Security approval.
+- For non-Meridian tenants, instruct Support to use legacy Operations Console.
+- For downstream timeout, SRE may temporarily lower evidence metadata expansion, but cannot bypass Authorization Gateway.
+
+## Recommendation Unavailable
+
+Recommendation Service is non-blocking. If unavailable, workspace should load without a recommendation banner. SRE should page Platform Engineering if recommendation_eval_error_rate exceeds 5 percent for 15 minutes on pilot tenants. Support should tell customers that claim review can continue and that recommendations are internal workflow aids.
+
+Do not manually create recommendation records. Adjudicators may proceed with manual review and record reasons in claim notes. If recommendations are absent for more than one business day, Product must decide whether to pause rollout.
+
+## Checklist Generation Failure
+
+Checklist failure affects missing information templates. The UI should disable template send actions when rule_source cannot be determined. Platform Engineering should review checklist_generation_failure logs and compare rule version with the employer group plan configuration.
+
+Known issue: For BluePeak Retail Group, plan BP-STDI-2025 uses the phrase “medical statement” in its plan document, while the default rule uses “provider statement.” The mapping was patched in rule version 2026.03.04-r2.
+
+## Audit Publish Failure
+
+State-changing writes must fail closed if Audit Service cannot confirm event acceptance. If users report that they cannot send missing information requests or override recommendations, check audit_publish_failure first.
+
+Emergency action:
+- Do not disable audit publishing.
+- Do not backfill events manually from UI screenshots.
+- Platform Engineering may replay failed events from the outbox table only when idempotency keys are intact.
+- Compliance must be notified for any gap in claim-changing event capture.
+
+## Carrier Sync Backlog
+
+Carrier sync backlog is owned by Integration Engineering. Page Integration Engineering when retry backlog for Meridian claims exceeds 1,500 jobs or when oldest retry age exceeds 30 minutes for pilot tenants. The threshold is lower than the general Integration Service threshold because pilot brokers are monitoring Meridian status closely.
+
+Common carrier sync error categories:
+- missing_carrier_group_id
+- unsupported_benefit_code
+- carrier_portal_unavailable
+- payload_validation_failed
+- suppressed_by_manual_hold
+- unknown_response
+
+Manual suppression requires an Integration Engineering lead and must be recorded with reason. Suppression does not close the claim.
+
+## Rollback
+
+Meridian feature flags allow tenant-level and role-level rollback. Rollback options:
+
+- Disable recommendation display only.
+- Disable checklist templates.
+- Disable write actions while preserving read-only workspace.
+- Disable entire Meridian workspace and return tenant to legacy queues.
+
+The preferred rollback for unclear incidents is to disable write actions first. Full rollback should be used for suspected authorization or cross-tenant issues. SRE owns execution, Product owns customer communication, and Security must approve any rollback related to access concerns.
+
+## Communications
+
+For Sev-1 and Sev-2 incidents, SRE opens an incident channel using the pattern `inc-meridian-yyyy-mm-dd-shortname`. Support posts customer impact summaries every 30 minutes while the incident is active. Avoid mentioning claim details in channel names.
+
+Customer messaging should distinguish between claim processing delays and carrier transmission delays. Support must not promise that a carrier has received a claim unless the carrier sync status is succeeded or the Integration team confirms receipt.
+
+## Post-Incident Requirements
+
+Every Sev-1 and Sev-2 Meridian incident requires a postmortem within five business days. The postmortem must include timeline, impact, contributing factors, detection path, what worked, what did not work, action items, and customer communication summary. If an audit gap occurred, Compliance adds a separate regulatory assessment.
+
+## Appendix A: Dashboards
+
+Dashboards:
+- Meridian Workspace Health
+- Recommendation Service Quality
+- Checklist Rule Errors
+- Audit Event Outbox
+- Carrier Retry Backlog
+- Pilot Tenant Claim Throughput
+
+## Appendix B: Known Pilot Exceptions
+
+Ashvale Manufacturing has a custom plan rule that requires employer confirmation before carrier sync for supplemental accident claims. Corvus BioSystems has broker PHI access disabled even though the broker has operational visibility. BluePeak has a known plan terminology mapping issue described above.
+
+===== DOCUMENT END =====
+
+===== DOCUMENT START =====
+filename: 04_compliance_security_handbook.md
+document type: Policy / Compliance Handbook
+
+# Polaris Claims Hub Compliance and Security Handbook
+
+**Filename:** 04_compliance_security_handbook.md  
+**Document type:** Policy / Compliance Handbook  
+**Date:** 2026-01-30  
+**Owner:** Mara Kline, Chief Compliance Officer  
+**Status:** Governing policy for 2026 operations  
+**Related documents:** 01_project_meridian_prd.md, 02_meridian_architecture_design.md, 08_customer_onboarding_guide.md
+
+## Purpose Summary
+
+This handbook defines compliance and security expectations for Polaris Claims Hub, including data classification, role-based access, audit logging, retention, customer communication, incident reporting, and permitted uses of workflow recommendations.
+
+## Data Classification
+
+Northstar Benefits Group classifies data into four categories:
+
+**Public:** Approved marketing content and public product documentation.
+
+**Internal:** Operational procedures, non-sensitive project plans, team roadmaps, and aggregated metrics that do not identify claimants.
+
+**Confidential:** Customer contract terms, employer group configuration, carrier mappings, internal support notes, and security architecture.
+
+**Restricted:** Protected health information, employee claim evidence, disability-related documents, diagnosis or treatment references, government identifiers, bank details, and any claim note that could reveal health status.
+
+Meridian workspace data may include all four categories. The default assumption for uploaded evidence is Restricted until classified otherwise.
+
+## Role-Based Access
+
+The following roles are approved:
+
+- Operations Adjudicator: may view claim evidence, eligibility summary, checklist, recommendation details, and decision history for assigned tenants.
+- Support Specialist: may view claim summary, public status, safe evidence metadata, and escalation reason. May not view evidence content by default.
+- Support Lead: may view Support Specialist fields plus internal status and escalation notes.
+- Compliance Reviewer: may view audit history, evidence metadata, and evidence content when assigned to a review or investigation.
+- Security Analyst: may view access logs, audit events, and limited metadata necessary for security investigation.
+- Carrier Integration Analyst: may view carrier mapping metadata and sync payload status. Evidence content requires separate reviewer access.
+- Broker User: may view employer-approved operational status and safe summary fields. Broker PHI access requires a signed addendum and Security approval.
+- Customer Benefits Administrator: may view claims for their employer group according to customer configuration and employee consent rules.
+
+Access must be least privilege. Group-based access must be reviewed quarterly. Emergency access is allowed only through break-glass workflow and requires a reason code.
+
+## Audit Logging
+
+All claim-changing actions must produce audit events. Events must capture actor, role, timestamp, tenant, claim ID, action, prior value, new value, source service, and request ID. Displaying a recommendation must be logged when it could influence a human review. Audit export itself must also be logged.
+
+Audit logs are append-only. Engineering teams may replay event delivery from an outbox when idempotency keys are intact, but may not edit audit records directly. Corrections must be appended as corrective events.
+
+## Retention
+
+Claim records, evidence files, evidence metadata, audit events, recommendation records that were displayed to users, and decision history must be retained for seven years after claim closure unless a customer contract, legal hold, regulatory inquiry, or litigation preservation notice requires longer retention.
+
+Temporary extraction artifacts, draft classification traces, and non-displayed recommendation evaluation details should be deleted within 30 days unless needed for an active incident review. Backups follow the approved backup lifecycle and are not used as searchable production records.
+
+If a claim is reopened, the retention clock is interpreted conservatively. Compliance guidance is to retain until seven years after final closure of the reopened claim. The PRD lists this as an open product question because the UI timer behavior is separate from legal retention.
+
+## Workflow Recommendations
+
+Recommendations are permitted only as workflow aids. They must not make final benefit determinations or communicate decisions to employees. Recommendation language must avoid words such as “deny,” “approve,” or “medically necessary” unless presented as a recorded human decision from an authorized adjudicator.
+
+Allowed examples:
+- Missing provider statement.
+- Possible duplicate claim.
+- Eligibility data unavailable.
+- Carrier mapping error.
+- Ready for human review.
+
+Prohibited examples:
+- Claim should be denied.
+- Employee is not disabled.
+- Fraud likely.
+- Medical evidence insufficient for benefit approval.
+
+## Customer Communications
+
+Missing information requests must use approved templates. Free-text notes may be added, but required compliance language may not be removed. Customer communications must not expose internal model confidence scores, internal rule IDs, or Security investigation notes.
+
+Brokers may receive operational delay explanations, but medical evidence details must not be included unless broker PHI access is contractually enabled and technically approved.
+
+## Incident Reporting
+
+Suspected unauthorized access, cross-tenant exposure, missing audit history for claim-changing actions, or Restricted data leakage must be reported to Security immediately. Security determines notification obligations with Legal and Compliance. Operations incidents without data exposure follow the standard SRE incident process.
+
+For incidents involving Restricted data, the incident record must include data categories involved, affected tenants, affected claim count, detection source, containment steps, and whether any evidence content was accessed.
+
+## Vendor and Carrier Integrations
+
+Carrier integrations must use approved transport, encryption, and authentication methods. Carrier payloads should include the minimum necessary information. Failed payloads may be logged only with identifiers, error categories, and sanitized metadata. Full payload capture requires Security approval for a bounded investigation window.
+
+## Training
+
+Employees with access to Restricted claim data must complete annual privacy and security training. Meridian pilot users must complete supplemental training covering role-based workspace views, recommendation limitations, missing information templates, and incident escalation.
+
+## Exceptions
+
+Policy exceptions require a named owner, expiration date, risk acceptance, and compensating controls. The broker-phi-view feature flag is considered a high-risk exception and must expire within 12 months unless renewed.
+
+## Appendix: Policy Conflicts and Interpretation
+
+If product documentation conflicts with this handbook, the handbook governs. If architecture documentation describes a longer implementation buffer, such as seven years plus 30 days, that buffer is operational and does not change the retention policy. If customer contract terms require longer retention, contract terms govern.
+
+===== DOCUMENT END =====
+
+===== DOCUMENT START =====
+filename: 05_incident_postmortem_intake_classifier.md
+document type: Incident Postmortem
+
+# Incident Postmortem: Intake Classification and Evidence Routing
+
+**Filename:** 05_incident_postmortem_intake_classifier.md  
+**Document type:** Incident Postmortem  
+**Incident date:** 2026-01-22  
+**Postmortem date:** 2026-01-29  
+**Incident commander:** Lena Ortiz  
+**Status:** Closed with follow-up actions open  
+**Related documents:** 01_project_meridian_prd.md, 02_meridian_architecture_design.md, 03_operations_runbook_meridian.md
+
+## Purpose Summary
+
+This postmortem describes the January 22, 2026 intake classification incident that delayed several claim reviews and led to changes in the Meridian rollout plan, event logging requirements, and recommendation language controls.
+
+## Summary
+
+On January 22, 2026, a configuration change to the intake classifier caused supplemental accident evidence uploaded by two pilot-prep customers to be categorized as “unclassified evidence” instead of “incident report” or “provider statement.” The affected claims did not lose evidence files, and no unauthorized access was identified. However, 184 claims were routed to manual exception queues, 67 claims received duplicate missing information requests, and Support could not explain the delay from the standard status screen.
+
+The issue was detected by an Operations lead who noticed an unusual spike in unclassified evidence for Ashvale Manufacturing. Automated monitoring did not alert because the legacy classifier dashboard grouped unclassified evidence under manual review and did not distinguish normal manual review from classifier regression.
+
+## Impact
+
+Affected tenants:
+- Ashvale Manufacturing
+- BluePeak Retail Group
+
+Affected records:
+- 184 claims routed to manual exception.
+- 67 claims had duplicate missing information requests.
+- 21 claims missed the internal first-review SLA.
+- 0 confirmed unauthorized access events.
+- 0 evidence files lost.
+
+Customer impact was moderate. Claims were delayed, and some employees received confusing requests for documents they had already uploaded. Support escalations increased sharply on January 23 and January 24.
+
+## Timeline
+
+2026-01-22 09:12 ET: Classifier configuration version 2026.01.22-r1 deployed.
+
+2026-01-22 10:04 ET: Evidence uploads for Ashvale begin receiving unclassified_evidence type.
+
+2026-01-22 12:47 ET: Operations lead notices manual exception queue above normal range.
+
+2026-01-22 13:10 ET: Support receives first broker escalation about duplicate document request.
+
+2026-01-22 13:22 ET: SRE opens incident channel.
+
+2026-01-22 13:41 ET: Platform rolls back classifier config to 2026.01.15-r3.
+
+2026-01-22 14:20 ET: New uploads classify normally.
+
+2026-01-22 16:05 ET: Backfill job identifies affected claims.
+
+2026-01-23 09:30 ET: Customer communication sent to Ashvale and BluePeak.
+
+2026-01-24 15:00 ET: Duplicate request suppression script completed.
+
+2026-01-29 11:00 ET: Postmortem reviewed by Product, Compliance, SRE, and Operations.
+
+## Root Cause
+
+The immediate cause was a classifier rule change that renamed “provider statement” to “medical statement” for one carrier template but unintentionally narrowed the synonym list used by the supplemental accident classifier. The regression test suite covered standard document examples but did not include Ashvale’s employer-custom incident report format or BluePeak’s scanned provider statement template.
+
+A contributing factor was the absence of a clear event trail from evidence upload to checklist generation. Support could see that a claim was pending information but could not see that the uploaded document had been classified as unclassified evidence. Another contributing factor was that duplicate missing information requests were permitted when a checklist item was regenerated after classifier rollback.
+
+## What Went Well
+
+- Evidence files remained intact.
+- Rollback was completed in under 30 minutes after incident declaration.
+- Operations identified the issue quickly despite insufficient automated detection.
+- The backfill job found affected claims without requiring customer re-upload.
+- Compliance confirmed that no unauthorized access was detected.
+
+## What Did Not Go Well
+
+- Monitoring did not alert on classifier regression.
+- Support status views did not distinguish missing customer evidence from internal classification delay.
+- Duplicate missing information requests were sent.
+- The launch plan assumed that classifier behavior could be validated separately from checklist behavior.
+- Event logs did not consistently show recommendation or checklist source.
+
+## Corrective Actions
+
+| Action | Owner | Due Date | Status |
+|---|---|---:|---|
+| Add classifier regression suite using pilot customer document samples | Platform Engineering | 2026-02-10 | Done |
+| Add unclassified evidence spike alert by tenant and benefit type | SRE | 2026-02-05 | Done |
+| Require checklist rule source in workspace | Product / Platform | 2026-02-20 | Done in Meridian design |
+| Suppress duplicate missing information requests within 72 hours | Platform Engineering | 2026-02-18 | Done |
+| Revise rollout from big-bang launch to phased pilot | Product Council | 2026-02-01 | Done |
+| Add recommendation_displayed audit event | Platform Engineering | 2026-02-28 | In progress at review |
+| Update Support KB for classification delay language | Support Ops | 2026-02-08 | Done |
+
+## Rollout Implications
+
+The original Meridian rollout plan targeted a single customer-facing launch in April 2026. After this incident, Product Council approved a phased rollout. Phase 1 begins with read-only recommendations and role-filtered workspace visibility. Write actions such as missing information templates and adjudicator override are enabled after audit and checklist reliability checks.
+
+The incident also changed the wording policy for recommendations. Product and Compliance agreed that recommendations must not imply final decisions. The language “ready to approve” was removed and replaced with “eligible for human review.”
+
+## Customer Communications
+
+Support sent a plain-language explanation to Ashvale and BluePeak. The message stated that uploaded evidence had been received but some documents were temporarily categorized incorrectly, which delayed review and caused duplicate requests. The message did not reference internal classifier rules or model terminology.
+
+## Lessons for RAG Testing
+
+This incident is useful for testing retrieval because the evidence for delayed launch is spread across this postmortem, the PRD, the decision log, and the roadmap. A grounded answer should cite the classification regression, duplicate missing information requests, missing event traceability, and the Product Council decision to phase rollout.
+
+## Appendix: Detection Gap
+
+The legacy classifier dashboard reported total manual review volume but not document type regression. SRE’s new alert computes the ratio of unclassified evidence to total evidence uploads by tenant and benefit type. Alert threshold is 8 percent for 15 minutes in pilot tenants. Baseline for Ashvale supplemental accident is below 2 percent.
+
+===== DOCUMENT END =====
+
+===== DOCUMENT START =====
+filename: 06_qbr_strategy_memo_q1_2026.md
+document type: Quarterly Business Review / Strategy Memo
+
+# Q1 2026 Business Review and Strategy Memo
+
+**Filename:** 06_qbr_strategy_memo_q1_2026.md  
+**Document type:** Quarterly Business Review / Strategy Memo  
+**Date:** 2026-04-08  
+**Owner:** Noah Feld, VP Strategy and Operations  
+**Status:** Shared with executive staff  
+**Related documents:** 01_project_meridian_prd.md, 10_project_meridian_roadmap.md
+
+## Purpose Summary
+
+This memo summarizes Q1 business performance for Polaris Claims Hub and connects customer retention, operational efficiency, and Project Meridian rollout priorities.
+
+## Executive Summary
+
+Q1 revenue performance was slightly above plan, but service costs grew faster than expected because claim volume shifted toward more complex benefit types. Meridian remains the primary operational efficiency bet for 2026. The January classifier incident delayed the original launch schedule, but the phased rollout has improved confidence among Compliance and large brokers.
+
+The executive team should continue funding Meridian, but should not frame it as pure automation. Customers are buying reliability, auditability, and fewer status escalations. The highest-value outcome is not replacing adjudicators; it is reducing avoidable rework.
+
+## Q1 Metrics
+
+- Annual recurring revenue: $42.8M, 4.2 percent above plan.
+- Net revenue retention: 112 percent.
+- Gross logo retention: 94 percent.
+- Claims processed through Polaris: 318,000.
+- Average claims per covered life: 0.42.
+- Support escalations tagged “status unclear”: 1,842, up 18 percent from Q4.
+- Median time to first human review: 18.1 business hours, slightly improved from 18.6.
+- Carrier sync failures per 1,000 claims: 12.4.
+- Duplicate evidence request rate: 9.7 percent.
+
+## Customer Signals
+
+Broker advisory board members consistently asked for clearer status visibility. They are less interested in algorithmic claim decisions than in knowing whether a claim is blocked by the employee, employer, Northstar, or carrier. Large employers asked for audit exports, especially when reconciling employee complaints.
+
+Ashvale Manufacturing said Meridian’s unified workspace would reduce weekly broker calls if it can show safe evidence status and carrier transmission state. BluePeak Retail Group emphasized template clarity and asked that “medical statement” and “provider statement” not appear as separate requirements. Corvus BioSystems asked for stricter broker access and does not want broker PHI enabled.
+
+## Strategic Priorities
+
+1. Launch Meridian safely with pilot tenants.
+2. Reduce duplicate evidence requests by at least 30 percent.
+3. Improve carrier sync observability.
+4. Strengthen compliance posture through audit exports.
+5. Retire legacy LumenBridge terminology from customer-facing materials.
+6. Expand broker operational visibility without exposing restricted evidence.
+
+## Launch Delay Rationale
+
+The shift from a single April launch to a phased rollout was the right decision. The January incident demonstrated that classifier errors can appear as customer action items, causing duplicate requests and trust erosion. It also showed that Support needs a better explanation layer. Product, SRE, and Compliance agreed that read-only visibility should precede workflow-changing actions.
+
+Evidence supporting the delay appears in the incident postmortem, Product Council decision notes, and the roadmap. The delay was not caused by lack of customer demand; it was caused by reliability and auditability concerns.
+
+## Financial View
+
+The business case for Meridian depends on reducing manual rework. Operations estimates that duplicate evidence requests and unclear status escalations cost approximately 4,600 staff hours per quarter. A 30 percent reduction would save roughly 1,380 hours per quarter before considering customer satisfaction effects.
+
+Engineering cost increased because Security required stronger event capture and role filtering. This cost is justified. A major data access incident would be far more expensive than a delayed launch.
+
+## Risks
+
+- Pilot customers may expect faster claim decisions even though Meridian is not an automated adjudication system.
+- Broker visibility requests may pressure teams to overexpose evidence details.
+- Carrier sync issues could be mistaken for Northstar review delays.
+- Legacy LumenBridge customers may resist terminology changes.
+- If audit export is delayed, Compliance value proposition weakens.
+
+## Decisions
+
+The executive staff endorsed continued investment in Meridian. The team approved hiring one additional Integration Engineer for carrier sync reliability and one Support Operations analyst for Meridian pilot readiness. The team rejected a proposal to market Meridian as AI adjudication.
+
+## Next Quarter Focus
+
+Q2 should focus on pilot conversion, operational training, and measurable reduction in duplicate requests. Product should report weekly on time to first review, recommendation override rate, and Support escalations. Strategy will revisit pricing only after customer pilots demonstrate value.
+
+## Appendix: Customer Notes
+
+Ashvale wants a weekly export of claims blocked by employer action. BluePeak wants terminology normalization. Corvus wants strict broker access. These requests are compatible with Meridian but should not all be treated as Phase 1 launch blockers.
+
+===== DOCUMENT END =====
+
+===== DOCUMENT START =====
+filename: 07_decision_log_meridian.md
+document type: Meeting Notes / Decision Log
+
+# Meridian Meeting Notes and Decision Log
+
+**Filename:** 07_decision_log_meridian.md  
+**Document type:** Meeting Notes / Decision Log  
+**Date range:** 2025-11-07 to 2026-03-18  
+**Owner:** Priya Menon  
+**Status:** Living record  
+**Related documents:** 01_project_meridian_prd.md, 05_incident_postmortem_intake_classifier.md, 10_project_meridian_roadmap.md
+
+## Purpose Summary
+
+This file captures major Meridian decisions, unresolved questions, and action items. It intentionally preserves some historical terminology used before the final PRD.
+
+## D-001: Standardize Product Term “Claim”
+
+**Date:** 2025-11-07  
+**Decision:** Use “claim” in Meridian UI. Preserve legacy aliases for import and search.  
+**Context:** LumenBridge used “packet,” some brokers say “case,” and older Support macros say “matter.”  
+**Owner:** Product  
+**Status:** Accepted
+
+## D-004: Exclude Automated Denial
+
+**Date:** 2025-12-02  
+**Decision:** Meridian recommendations will not deny claims or make final benefit determinations.  
+**Rationale:** Compliance and customer trust concerns.  
+**Status:** Accepted
+
+## D-007: Keep Claim Service as Source of Truth
+
+**Date:** 2025-12-16  
+**Decision:** Phase 1 will not replace Claim Service. Workspace API composes data from existing systems.  
+**Owner:** Platform Engineering  
+**Status:** Accepted
+
+## D-010: Audit Export Required for Pilot
+
+**Date:** 2026-01-05  
+**Decision:** Compliance users need CSV audit export in Phase 1. Signed JSON can wait.  
+**Open issue:** Whether export belongs in Workspace API or Compliance Console.  
+**Status:** Accepted with implementation owner unresolved
+
+## D-014: Terminology Decision
+
+**Date:** 2026-01-11  
+**Decision:** Preferred term is “claim evidence package,” not “packet.”  
+**Notes:** Support macros still use “case” in several templates.  
+**Status:** Accepted
+
+## D-018: Rollout Plan Revised After Classifier Incident
+
+**Date:** 2026-01-31  
+**Decision:** Replace big-bang April launch with phased rollout. Read-only workspace and recommendations first; write actions later.  
+**Evidence:** January 22 classifier incident caused unclassified evidence spike, duplicate missing information requests, and support confusion.  
+**Owner:** Product Council  
+**Status:** Accepted
+
+## D-019: Recommendation Language Restrictions
+
+**Date:** 2026-01-31  
+**Decision:** Recommendations may not use “deny,” “approve,” or equivalent final-decision language.  
+**Approved examples:** missing provider statement, possible duplicate claim, carrier mapping error, ready for human review.  
+**Status:** Accepted
+
+## D-021: Broker PHI Access Flag
+
+**Date:** 2026-02-06  
+**Decision:** Broker PHI access must be controlled by feature flag and signed addendum. Default is off.  
+**Owner:** Security  
+**Status:** Accepted
+
+## D-024: Retention Interpretation
+
+**Date:** 2026-02-13  
+**Decision:** Compliance policy remains seven years after claim closure. Engineering may implement deletion eligibility with a 30-day processing buffer.  
+**Notes:** Do not describe this as seven years and 30 days in customer-facing policy.  
+**Status:** Accepted
+
+## D-026: Carrier Sync Visibility
+
+**Date:** 2026-02-17  
+**Decision:** Workspace must show normalized carrier sync status for internal users. Customer visibility deferred.  
+**Reason:** Brokers cannot tell whether delays are internal or carrier-side.  
+**Status:** Accepted for internal pilot
+
+## D-030: Missing Information Template Lock
+
+**Date:** 2026-02-24  
+**Decision:** Required compliance language in missing information templates cannot be removed by employer admins.  
+**Owner:** Compliance  
+**Status:** Accepted
+
+## D-033: Pilot Tenant List
+
+**Date:** 2026-03-05  
+**Decision:** Pilot tenants are Ashvale Manufacturing, BluePeak Retail Group, and Corvus BioSystems.  
+**Constraints:** Corvus broker PHI remains disabled. BluePeak requires terminology mapping patch. Ashvale has custom employer confirmation rule.  
+**Status:** Accepted
+
+## D-036: Reopened Claim SLA
+
+**Date:** 2026-03-18  
+**Decision:** No final decision. Operations wants new internal SLA timer after reopen; Compliance says retention should be based on final closure.  
+**Status:** Open
+
+## Action Items
+
+- Product to remove “case” from Support macros by end of Q2.
+- Platform to finish event publisher migration.
+- SRE to publish carrier retry backlog threshold.
+- Compliance to approve final audit export fields.
+- Support Ops to train pilot teams on status explanation language.
+
+===== DOCUMENT END =====
+
+===== DOCUMENT START =====
+filename: 08_customer_onboarding_guide.md
+document type: Customer Implementation / Onboarding Guide
+
+# Customer Implementation Guide: Polaris Claims Hub with Meridian Pilot
+
+**Filename:** 08_customer_onboarding_guide.md  
+**Document type:** Customer Implementation / Onboarding Guide  
+**Date:** 2026-03-20  
+**Owner:** Customer Success Enablement  
+**Status:** Pilot customer version  
+**Related documents:** 04_compliance_security_handbook.md, 09_support_kb_meridian.md
+
+## Purpose Summary
+
+This guide explains how pilot customers prepare for Meridian-enabled workflows in Polaris Claims Hub. It is written for employer benefits administrators and broker operations leads.
+
+## Overview
+
+Meridian provides a clearer claim workspace for Northstar internal teams and selected customer-facing users. During the pilot, customers will see improved claim status descriptions and evidence request clarity. Meridian does not change plan benefits, carrier decision rules, or employee eligibility requirements.
+
+## Pilot Timeline
+
+- March 25, 2026: Customer configuration review.
+- April 1, 2026: Administrator training.
+- April 8, 2026: Read-only status visibility enabled.
+- April 15, 2026: Missing information templates enabled for pilot Operations teams.
+- April 29, 2026: Carrier sync status reviewed internally.
+- May 2026: Pilot feedback and expansion decision.
+
+Dates may shift if security review, audit validation, or tenant-specific configuration is incomplete.
+
+## Customer Preparation Checklist
+
+1. Confirm employer group list and plan identifiers.
+2. Review benefit types included in the pilot.
+3. Confirm broker access preferences.
+4. Provide current evidence requirement language for each benefit type.
+5. Identify customer contacts for claim escalation.
+6. Attend administrator training.
+7. Validate that legacy “packet” terminology is not used in customer-facing instructions.
+
+## Evidence Upload Guidance
+
+Customers should upload documents through the Polaris portal. Evidence types may include provider statement, incident report, employer confirmation, employee attestation, carrier form, wage statement, or other supporting document. If a document type is not listed, choose “other evidence” and add a note.
+
+For BluePeak Retail Group, “medical statement” in older plan language is mapped to “provider statement” in Meridian. Customers should not upload the same document twice under both labels.
+
+## Broker Access
+
+Broker users receive operational status fields approved by the employer. By default, brokers cannot view uploaded medical evidence. Broker PHI access requires a signed addendum and Northstar Security approval. Corvus BioSystems has chosen not to enable broker PHI access during the pilot.
+
+## Status Descriptions
+
+Public statuses include received, pending information, under review, sent to carrier, decision received, closed, and reopened. Internal statuses such as audit hold or classification pending are not shown to customer users. If a claim is delayed because Northstar is validating uploaded evidence, Support may describe it as “under review” or “pending internal review,” depending on customer configuration.
+
+## Missing Information Requests
+
+Customers may receive missing information requests through portal notification and email. Requests will include the claim reference, requested item, due date where applicable, and required compliance language. Customers should not reply with sensitive documents over regular email unless instructed to use a secure channel.
+
+## Carrier Transmission
+
+During the early pilot, carrier sync status is primarily visible to Northstar internal teams. Customers may see “sent to carrier” after Northstar transmits the claim. A claim may be internally complete before carrier confirmation is available.
+
+## Data Handling
+
+Northstar retains claim records and evidence according to the Compliance Handbook. The standard policy is seven years after claim closure unless a contract or legal hold requires a longer period. Customers should not ask employees to send medical evidence to personal email accounts.
+
+## Training Agenda
+
+Training covers:
+- Portal navigation.
+- Evidence upload best practices.
+- Status meanings.
+- Broker access options.
+- Escalation process.
+- What Meridian does not do.
+- Privacy and secure document handling.
+
+## Common Implementation Risks
+
+- Plan documents use terminology that differs from Meridian checklist labels.
+- Broker role expectations are broader than approved access.
+- Customer assumes Meridian automatically approves or denies claims.
+- Employer administrators upload duplicate evidence after receiving a reminder.
+- Carrier delays are mistaken for Northstar review delays.
+
+## Escalation Contacts
+
+Customer Success Manager owns onboarding coordination. Support owns day-to-day claim questions. Security handles access concerns. Compliance handles retention or privacy questions. Integration Engineering may be pulled in for carrier transmission issues but is not a direct customer contact.
+
+## Appendix: Pilot-Specific Notes
+
+Ashvale Manufacturing requires employer confirmation before supplemental accident claims are transmitted to carrier. BluePeak has terminology mapping for medical statement/provider statement. Corvus has broker PHI disabled and requires all broker status exports to exclude evidence details.
+
+===== DOCUMENT END =====
+
+===== DOCUMENT START =====
+filename: 09_support_kb_meridian.md
+document type: FAQ / Support Knowledge Base Article
+
+# Support Knowledge Base: Meridian Claim Workspace
+
+**Filename:** 09_support_kb_meridian.md  
+**Document type:** FAQ / Support Knowledge Base Article  
+**Date:** 2026-03-22  
+**Owner:** Support Operations  
+**Status:** Active for Support and Support Leads  
+**Related documents:** 03_operations_runbook_meridian.md, 08_customer_onboarding_guide.md
+
+## Purpose Summary
+
+This article gives Support teams approved explanations and troubleshooting steps for Meridian pilot questions.
+
+## Quick Positioning
+
+Meridian is a workflow and visibility improvement in Polaris Claims Hub. It helps Northstar teams understand claim status, evidence needs, recommendations, and carrier transmission state. It does not automatically approve or deny claims.
+
+## Who Can Use Meridian?
+
+During pilot, Meridian is enabled for Ashvale Manufacturing, BluePeak Retail Group, and Corvus BioSystems. Some customer users see only limited status improvements. Internal Operations users see the full workspace based on role permissions.
+
+## What Should I Say If a Broker Asks Why a Claim Is Delayed?
+
+Use the safest accurate reason available. Examples:
+- “We have received the claim and it is under review.”
+- “We are waiting for additional information requested through the portal.”
+- “The claim has been prepared for carrier transmission.”
+- “We are reviewing uploaded evidence before the next status update.”
+
+Do not mention internal audit hold, classifier regression, model confidence, or restricted evidence details. If the broker has no PHI access, do not describe medical documents beyond safe labels such as “provider statement received” if enabled.
+
+## Duplicate Evidence Requests
+
+If a customer says they received a duplicate request, check the claim timeline for recent missing information requests and evidence uploads. Duplicate requests were a known issue after the January classifier incident, but the suppression rule should prevent repeat requests within 72 hours. If a duplicate occurred after 2026-02-18, escalate to Platform Engineering.
+
+Suggested response: “We see that evidence was uploaded. We are checking whether the request was sent before the upload was matched to the claim.”
+
+## Recommendation Banner Questions
+
+Recommendations are internal workflow aids. Do not read recommendation text to customers unless the text is already customer-approved status language. Never say the system decided a claim outcome.
+
+## Carrier Sync Questions
+
+If carrier status is pending or failed, check whether the customer-facing status should remain under review or sent to carrier. Do not promise carrier receipt unless status is succeeded or Integration confirms it. Common internal reasons include missing carrier group ID, unsupported benefit code, carrier portal unavailable, or payload validation failed.
+
+## Access Issues
+
+If a user cannot see expected information:
+1. Confirm tenant and employer group.
+2. Confirm user role.
+3. Confirm whether broker PHI access is enabled.
+4. Check whether the claim belongs to a Meridian-enabled pilot group.
+5. Escalate suspected access defects to Security.
+
+Never request that a user share another employee’s medical documents in a normal email thread.
+
+## Reopened Claims
+
+A reopened claim may appear with prior history and new activity. The reopened claim SLA timer is still under discussion. Do not state a policy that is not documented. You may say: “The claim has been reopened and is being reviewed under the current workflow.”
+
+## Approved Terms
+
+Use claim, evidence, provider statement, incident report, employer confirmation, pending information, under review, sent to carrier, decision received, closed, reopened.
+
+Avoid packet, case, matter, AI decision, automatic denial, fraud likely, medically insufficient.
+
+## When to Escalate
+
+Escalate to SRE for broad workspace outage, repeated timeouts, or multiple customers impacted. Escalate to Platform for checklist mismatch or duplicate request after suppression date. Escalate to Integration for carrier sync failures. Escalate to Security for possible unauthorized access or PHI exposure. Escalate to Compliance for retention, legal hold, or privacy requests.
+
+## FAQ
+
+**Does Meridian decide claims?**  
+No. Meridian provides workflow visibility and non-binding internal recommendations. Human adjudicators remain responsible for claim review actions.
+
+**Why does the customer guide say carrier status is internal?**  
+Carrier sync visibility is being tested internally first because raw carrier errors can be confusing and may include configuration details.
+
+**Can Support export audit history for a customer?**  
+No. Compliance users handle audit exports. Support can collect the request and route it to Compliance.
+
+**What if the uploaded document label looks wrong?**  
+Check whether the customer uses alternate terminology. BluePeak’s “medical statement” maps to “provider statement.” If the document remains unclassified, escalate.
+
+**What retention period should I quote?**  
+Use seven years after claim closure unless contract or legal hold requires longer. Do not mention engineering deletion buffers to customers.
+
+===== DOCUMENT END =====
+
+===== DOCUMENT START =====
+filename: 10_project_meridian_roadmap.md
+document type: Project Plan / Roadmap
+
+# Project Meridian Roadmap and Delivery Plan
+
+**Filename:** 10_project_meridian_roadmap.md  
+**Document type:** Project Plan / Roadmap  
+**Date:** 2026-03-25  
+**Owner:** Anika Rao, Program Management  
+**Status:** Baseline plan after rollout revision  
+**Related documents:** 01_project_meridian_prd.md, 06_qbr_strategy_memo_q1_2026.md, 07_decision_log_meridian.md
+
+## Purpose Summary
+
+This roadmap tracks Meridian delivery milestones, owners, dependencies, risks, and scope changes after the January 2026 classifier incident.
+
+## Program Objective
+
+Deliver a reliable, compliant, and auditable claim workspace that reduces duplicate evidence requests, improves time to first human review, and gives Support better status explanations without exposing restricted data.
+
+## Major Milestones
+
+### Milestone 1: Foundation Complete
+
+**Target:** 2026-03-15  
+**Status:** Complete  
+**Scope:** Workspace API read model, feature flags, role-filtered views, event publisher library beta, recommendation schema, checklist rule versioning.
+
+### Milestone 2: Internal Operations Pilot
+
+**Target:** 2026-04-08  
+**Status:** On track  
+**Scope:** Read-only workspace for pilot tenants, recommendation display, checklist visibility, audit timeline, Support training.
+
+### Milestone 3: Controlled Write Actions
+
+**Target:** 2026-04-22  
+**Status:** At risk  
+**Scope:** Missing information templates, adjudicator override, duplicate request suppression validation, audit fail-closed behavior.
+
+### Milestone 4: Carrier Sync Visibility
+
+**Target:** 2026-05-06  
+**Status:** On track with Integration hiring risk  
+**Scope:** Normalized carrier sync status, retry backlog dashboard, mapping error workflow, manual suppression reason capture.
+
+### Milestone 5: Customer Pilot Expansion
+
+**Target:** 2026-05-20  
+**Status:** Dependent on Milestone 3 and 4  
+**Scope:** Expand pilot to additional employer groups within Ashvale and BluePeak. Corvus expansion depends on broker access review.
+
+### Milestone 6: Legacy Queue Retirement for Pilot Tenants
+
+**Target:** 2026-06-17  
+**Status:** Not started  
+**Scope:** Disable legacy queue page for pilot tenants after success metrics meet thresholds for four consecutive weeks.
+
+## Scope Changes Since Original Plan
+
+The original plan assumed a single April launch including read-only workspace, write actions, bulk evidence upload, carrier sync visibility, and customer-facing status improvements. The revised plan separates these into milestones.
+
+Removed from Phase 1:
+- Bulk evidence upload.
+- Customer-facing carrier error details.
+- Signed JSON audit export.
+- Automated evidence deduplication beyond duplicate request suppression.
+- Localization for Quebec customers.
+
+Added to Phase 1:
+- recommendation_displayed audit event.
+- Checklist rule source display.
+- Audit fail-closed requirement for state-changing actions.
+- Broker PHI access feature flag review.
+- Unclassified evidence spike monitoring.
+
+## Dependency Matrix
+
+| Dependency | Owner | Needed For | Risk |
+|---|---|---|---|
+| Security role-filter review | Security | Internal and customer pilot | Medium |
+| Audit export field approval | Compliance | Pilot readiness | Medium |
+| Event publisher migration | Platform | Write actions | High |
+| Carrier retry dashboard | Integration / SRE | Carrier visibility | Medium |
+| Support training | Support Ops | Pilot launch | Low |
+| BluePeak terminology patch | Platform | BluePeak pilot | Low |
+| Ashvale employer confirmation rule | Product / Platform | Ashvale carrier sync | Medium |
+| Corvus broker access review | Security / CS | Corvus expansion | Medium |
+
+## Success Metrics
+
+- Median time to first human review below 10 business hours for pilot tenants.
+- Duplicate evidence request rate reduced by 30 percent from Q4 baseline.
+- 99 percent of claim-changing actions have complete audit event confirmation.
+- Recommendation override rate reviewed weekly and not exceeding expected thresholds without explanation.
+- Carrier sync success within two hours for 95 percent of internally completed pilot claims.
+- Support escalations tagged “status unclear” reduced by 20 percent for pilot tenants.
+
+## Workstreams
+
+### Product
+
+Owns PRD updates, UI language, customer feedback, recommendation wording, and scope tradeoffs. Product also owns the terminology cleanup effort to remove “case” from Support macros and “packet” from customer-facing materials.
+
+### Platform Engineering
+
+Owns Workspace API, Checklist and Recommendation Service, event publisher library, UI integration, and duplicate request suppression. The highest-risk item is event publisher migration because write actions cannot launch without audit fail-closed behavior.
+
+### Integration Engineering
+
+Owns carrier sync status adapter, retry dashboard, mapping error workflows, and manual suppression logging. QBR approved one additional Integration Engineer because carrier sync reliability is strategically important.
+
+### SRE
+
+Owns monitors, incident response, rollback, synthetic tenant checks, and dashboards. SRE also validates that read-only degradation works when Recommendation Service is unavailable.
+
+### Compliance and Security
+
+Own policy interpretation, role-based access review, broker PHI feature flag, audit export approval, and incident reporting obligations. Compliance clarified that retention policy is seven years after claim closure, while engineering may use a 30-day deletion processing buffer.
+
+### Support Operations
+
+Owns training, KB updates, customer-safe language, escalation routing, and feedback collection. Support must not expose internal recommendation or classifier details.
+
+## Risks and Mitigations
+
+**Risk:** Write actions launch before audit publisher is reliable.  
+**Mitigation:** Milestone 3 cannot complete until audit fail-closed tests pass.
+
+**Risk:** Customers interpret recommendations as automated adjudication.  
+**Mitigation:** Recommendation language restrictions, training, and UI labels.
+
+**Risk:** Carrier sync status causes confusion.  
+**Mitigation:** Internal visibility first, customer-facing details deferred.
+
+**Risk:** Pilot-specific plan terminology causes checklist mismatch.  
+**Mitigation:** Rule source display and customer-specific terminology mapping.
+
+**Risk:** Retention period described inconsistently.  
+**Mitigation:** Customer-facing materials quote Compliance Handbook only.
+
+## Governance
+
+Weekly Meridian program review occurs Wednesdays at 11:00 ET. Product Council reviews scope changes. Architecture Review Board reviews material service design changes. Security Review is mandatory for access model changes. Compliance signs off on customer-facing policy language.
+
+## Appendix: Evidence for Launch Delay
+
+The delay was based on specific operational findings, not general caution. The January 22 classifier incident caused unclassified evidence routing, duplicate missing information requests, and status confusion. The incident led to Decision D-018, which replaced the big-bang launch with phased rollout. The roadmap reflects that decision by splitting read-only visibility, write actions, and carrier visibility into separate milestones.
+
+===== DOCUMENT END =====
