@@ -132,6 +132,8 @@ The project now has a working Streamlit app on top of the RAG pipeline, includin
 - Added a loading spinner around workflow execution in the app
 - Configured the Streamlit page title, icon, and wide layout
 - Added a document-ingestion action flow that supports multiple uploaded files in one run
+- Added sample verification material under [Sample/](Sample/) to manually check the Streamlit app
+- Added [Sample/agentic_rag_test_questions.md](Sample/agentic_rag_test_questions.md) as a ready-made manual test question set
 
 ## Step 12 Implementation History
 
@@ -178,10 +180,11 @@ Important design decisions made during implementation:
 - The UI shows the final answer, workflow metadata, planned queries, and retrieved evidence
 - Ingestion feedback persists across reruns through Streamlit session state
 - The latest answer also persists across reruns through Streamlit session state
+- The app can be manually checked with the sample content and question set stored under [Sample/](Sample/)
 
 ## Next Step
 
-Manually exercise the Streamlit app with a realistic multi-document dataset and evaluate answer quality, citation behavior, and failure handling when evidence is weak or missing.
+Manually exercise the Streamlit app with the sample files in [Sample/](Sample/) and evaluate answer quality, citation behavior, and failure handling when evidence is weak or missing.
 
 ## After That
 
