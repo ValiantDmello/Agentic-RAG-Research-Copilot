@@ -4,6 +4,7 @@ from src.agent import (
     RetryQueryPlan,
     evaluate_evidence,
     format_evidence,
+    generate_answer,
     plan_queries,
     rewrite_queries_for_retry,
     retrieve_evidence,
@@ -39,6 +40,21 @@ class FakeTextLLM:
     def invoke(self, prompt: str) -> EvidenceEvaluation:
         self.prompts.append(prompt)
         return EvidenceEvaluation(sufficient=self.sufficient)
+
+
+class FakeAnswerResponse:
+    def __init__(self, content: str) -> None:
+        self.content = content
+
+
+class FakeAnswerLLM:
+    def __init__(self, content: str) -> None:
+        self.content = content
+        self.prompts: list[str] = []
+
+    def invoke(self, prompt: str) -> FakeAnswerResponse:
+        self.prompts.append(prompt)
+        return FakeAnswerResponse(self.content)
 
 
 def test_format_evidence_includes_source_page_chunk_id_and_text() -> None:
@@ -201,6 +217,57 @@ def test_retrieve_evidence_merges_unique_results_from_all_queries(monkeypatch) -
     assert initial_state["attempts"] == 0
 
 
+def test_retrieve_evidence_preserves_prior_chunks_across_retries(monkeypatch) -> None:
+    """Later retrieval attempts should keep earlier useful chunks and add only new ones."""
+    prior_chunk = RetrievedChunk(
+        chunk_id="doc::page-1::chunk-0",
+        text="Useful evidence from the first attempt.",
+        source="doc.md",
+        page=1,
+        score=0.92,
+    )
+    repeated_chunk = RetrievedChunk(
+        chunk_id="doc::page-1::chunk-0",
+        text="Useful evidence from the first attempt.",
+        source="doc.md",
+        page=1,
+        score=0.92,
+    )
+    new_chunk = RetrievedChunk(
+        chunk_id="doc::page-4::chunk-2",
+        text="New evidence found during the retry attempt.",
+        source="doc.md",
+        page=4,
+        score=0.89,
+    )
+    search_calls: list[tuple[str, int]] = []
+
+    def fake_search_documents(query: str, k: int = 5) -> list[RetrievedChunk]:
+        search_calls.append((query, k))
+        return [repeated_chunk, new_chunk]
+
+    monkeypatch.setattr("src.agent.search_documents", fake_search_documents)
+
+    initial_state = {
+        "question": "How was the system validated?",
+        "rewritten_queries": ["validation details"],
+        "retrieved_chunks": [prior_chunk],
+        "evidence_sufficient": False,
+        "answer": "",
+        "attempts": 1,
+    }
+
+    result = retrieve_evidence(initial_state)
+
+    assert search_calls == [("validation details", 4)]
+    assert [chunk.chunk_id for chunk in result["retrieved_chunks"]] == [
+        "doc::page-1::chunk-0",
+        "doc::page-4::chunk-2",
+    ]
+    assert result["attempts"] == 2
+    assert len(result["retrieved_chunks"]) == 2
+
+
 def test_retrieve_evidence_still_increments_attempts_when_no_matches(monkeypatch) -> None:
     """A retrieval pass counts as an attempt even if every query returns no chunks."""
     search_calls: list[tuple[str, int]] = []
@@ -331,3 +398,56 @@ def test_rewrite_queries_for_retry_falls_back_to_original_question_when_empty(
     result = rewrite_queries_for_retry(initial_state)
 
     assert result["rewritten_queries"] == ["What changed in the revised architecture?"]
+
+
+def test_generate_answer_uses_answer_prompt_and_stores_response(monkeypatch) -> None:
+    """Standard questions should use the answer prompt and save the model's reply."""
+    fake_llm = FakeAnswerLLM("The main conclusion is supported by the document. [doc.md, page 3]")
+    monkeypatch.setattr("src.agent.llm", fake_llm)
+    retrieved_chunk = RetrievedChunk(
+        chunk_id="doc::page-3::chunk-0",
+        text="The report concludes that retrieval quality dominates answer quality.",
+        source="doc.md",
+        page=3,
+        score=0.95,
+    )
+    initial_state = {
+        "question": "What is the main conclusion?",
+        "rewritten_queries": ["main conclusion"],
+        "retrieved_chunks": [retrieved_chunk],
+        "evidence_sufficient": True,
+        "answer": "",
+        "attempts": 1,
+    }
+
+    result = generate_answer(initial_state)
+
+    assert result["answer"] == "The main conclusion is supported by the document. [doc.md, page 3]"
+    assert initial_state["answer"] == ""
+    assert len(fake_llm.prompts) == 1
+    assert "Final answer:" in fake_llm.prompts[0]
+    assert "Question:\nWhat is the main conclusion?" in fake_llm.prompts[0]
+    assert "[Evidence 1] Source: doc.md, page 3" in fake_llm.prompts[0]
+
+
+def test_generate_answer_uses_quiz_prompt_when_question_requests_quiz(
+    monkeypatch,
+) -> None:
+    """Quiz requests should route to the quiz prompt instead of the normal answer prompt."""
+    fake_llm = FakeAnswerLLM("1. Question...\nAnswer key: ...")
+    monkeypatch.setattr("src.agent.llm", fake_llm)
+    initial_state = {
+        "question": "Create a quiz about this document.",
+        "rewritten_queries": ["document quiz"],
+        "retrieved_chunks": [],
+        "evidence_sufficient": False,
+        "answer": "",
+        "attempts": 2,
+    }
+
+    result = generate_answer(initial_state)
+
+    assert result["answer"] == "1. Question...\nAnswer key: ..."
+    assert len(fake_llm.prompts) == 1
+    assert "Create a short quiz using only the provided evidence." in fake_llm.prompts[0]
+    assert "Topic or request:\nCreate a quiz about this document." in fake_llm.prompts[0]

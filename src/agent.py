@@ -85,9 +85,9 @@ def plan_queries(state: AgentState) -> AgentState:
 
 
 def retrieve_evidence(state: AgentState) -> AgentState:
-    """Search the vector store for each planned query and collect evidence."""
-    all_chunks: list[RetrievedChunk] = []
-    seen_chunk_ids: set[str] = set()
+    """Search the vector store for each planned query and accumulate unique evidence."""
+    all_chunks = list(state["retrieved_chunks"])
+    seen_chunk_ids = {chunk.chunk_id for chunk in all_chunks}
 
     for query in state["rewritten_queries"]:
         chunks = search_documents(query, k=4)
@@ -126,7 +126,6 @@ def rewrite_queries_for_retry(state: AgentState) -> AgentState:
     # With the current AgentState, retries only remember the latest query set.
     # If we allow more than one retry later, add query history to state so a
     # third attempt can also avoid repeating the first attempt's queries.
-    # Also, I'd rather save input tokens, I am broke...lol
     prompt = RETRY_QUERY_PROMPT.format(
         question=state["question"],
         previous_queries=prior_queries or "- None",
@@ -142,7 +141,25 @@ def rewrite_queries_for_retry(state: AgentState) -> AgentState:
 
 def generate_answer(state: AgentState) -> AgentState:
     """Create the final grounded answer or quiz from retrieved evidence."""
-    raise NotImplementedError("TODO 9: implement generate_answer()")
+    evidence = format_evidence(state["retrieved_chunks"])
+
+    if "quiz" in state["question"].lower():
+        prompt = QUIZ_PROMPT.format(
+            question=state["question"],
+            evidence=evidence,
+        )
+    else:
+        prompt = ANSWER_PROMPT.format(
+            question=state["question"],
+            evidence=evidence,
+        )
+
+    response = llm.invoke(prompt)
+    response_text = response.content if isinstance(response.content, str) else str(response.content)
+
+    updated_state = state.copy()
+    updated_state["answer"] = response_text
+    return updated_state
 
 
 def decide_next_step(state: AgentState) -> str:

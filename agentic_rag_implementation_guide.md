@@ -1414,4 +1414,11 @@ Why this helps:
 - reduces wasted retrieval attempts
 - makes the workflow easier to debug and inspect
 
+Related tradeoff:
+
+- A simple and cheap MVP upgrade is to **merge retrieved chunks across attempts** so the final answer can use evidence found in both the initial search and the retry.
+- This avoids an extra LLM-based chunk-filtering step, so it is usually cheaper in API calls.
+- However, if you allow many retries, merged evidence can gradually accumulate chunks that are low-value or irrelevant.
+- At that point, consider adding a later evidence-selection or evidence-filtering step so the final answer prompt does not become noisy.
+
 This is not required for the MVP with a single retry, but it is a good upgrade for a more reliable agentic retrieval loop.
