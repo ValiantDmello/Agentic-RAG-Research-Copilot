@@ -67,7 +67,23 @@ def plan_queries(state: AgentState) -> AgentState:
 
 def retrieve_evidence(state: AgentState) -> AgentState:
     """Search the vector store for each planned query and collect evidence."""
-    raise NotImplementedError("TODO 6: implement retrieve_evidence()")
+    all_chunks: list[RetrievedChunk] = []
+    seen_chunk_ids: set[str] = set()
+
+    for query in state["rewritten_queries"]:
+        chunks = search_documents(query, k=4)
+
+        for chunk in chunks:
+            if chunk.chunk_id in seen_chunk_ids:
+                continue
+
+            all_chunks.append(chunk)
+            seen_chunk_ids.add(chunk.chunk_id)
+
+    updated_state = state.copy()
+    updated_state["retrieved_chunks"] = all_chunks
+    updated_state["attempts"] = state["attempts"] + 1
+    return updated_state
 
 
 def evaluate_evidence(state: AgentState) -> AgentState:

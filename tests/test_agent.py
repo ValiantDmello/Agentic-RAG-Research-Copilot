@@ -1,4 +1,4 @@
-from src.agent import QueryPlan, format_evidence, plan_queries
+from src.agent import QueryPlan, format_evidence, plan_queries, retrieve_evidence
 from src.schemas import RetrievedChunk
 
 
@@ -113,3 +113,86 @@ def test_plan_queries_falls_back_to_original_question_when_output_is_empty(
     result = plan_queries(initial_state)
 
     assert result["rewritten_queries"] == ["What is the main argument?"]
+
+
+def test_retrieve_evidence_merges_unique_results_from_all_queries(monkeypatch) -> None:
+    """Retrieval should search each query and deduplicate repeated chunks by chunk_id."""
+    chunk_a = RetrievedChunk(
+        chunk_id="doc::page-1::chunk-0",
+        text="First matching passage.",
+        source="doc.md",
+        page=1,
+        score=0.91,
+    )
+    chunk_b = RetrievedChunk(
+        chunk_id="doc::page-2::chunk-0",
+        text="Second matching passage.",
+        source="doc.md",
+        page=2,
+        score=0.88,
+    )
+    chunk_c = RetrievedChunk(
+        chunk_id="doc::page-3::chunk-1",
+        text="Third matching passage.",
+        source="doc.md",
+        page=3,
+        score=0.84,
+    )
+    search_calls: list[tuple[str, int]] = []
+
+    def fake_search_documents(query: str, k: int = 5) -> list[RetrievedChunk]:
+        search_calls.append((query, k))
+        if query == "innate immunity":
+            return [chunk_a, chunk_b]
+        if query == "adaptive immunity":
+            return [chunk_b, chunk_c]
+        return []
+
+    monkeypatch.setattr("src.agent.search_documents", fake_search_documents)
+
+    initial_state = {
+        "question": "Compare innate and adaptive immunity.",
+        "rewritten_queries": ["innate immunity", "adaptive immunity"],
+        "retrieved_chunks": [],
+        "evidence_sufficient": False,
+        "answer": "",
+        "attempts": 0,
+    }
+
+    result = retrieve_evidence(initial_state)
+
+    assert search_calls == [("innate immunity", 4), ("adaptive immunity", 4)]
+    assert [chunk.chunk_id for chunk in result["retrieved_chunks"]] == [
+        "doc::page-1::chunk-0",
+        "doc::page-2::chunk-0",
+        "doc::page-3::chunk-1",
+    ]
+    assert result["attempts"] == 1
+    assert initial_state["retrieved_chunks"] == []
+    assert initial_state["attempts"] == 0
+
+
+def test_retrieve_evidence_still_increments_attempts_when_no_matches(monkeypatch) -> None:
+    """A retrieval pass counts as an attempt even if every query returns no chunks."""
+    search_calls: list[tuple[str, int]] = []
+
+    def fake_search_documents(query: str, k: int = 5) -> list[RetrievedChunk]:
+        search_calls.append((query, k))
+        return []
+
+    monkeypatch.setattr("src.agent.search_documents", fake_search_documents)
+
+    initial_state = {
+        "question": "Unanswered topic",
+        "rewritten_queries": ["missing concept"],
+        "retrieved_chunks": [],
+        "evidence_sufficient": False,
+        "answer": "",
+        "attempts": 1,
+    }
+
+    result = retrieve_evidence(initial_state)
+
+    assert search_calls == [("missing concept", 4)]
+    assert result["retrieved_chunks"] == []
+    assert result["attempts"] == 2
