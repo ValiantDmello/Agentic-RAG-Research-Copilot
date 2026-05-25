@@ -57,8 +57,9 @@ def plan_queries(state: AgentState) -> AgentState:
     """Generate retrieval-friendly queries from the user question."""
     prompt = PLANNER_PROMPT.format(question=state["question"])
     response = planner_llm.invoke(prompt)
+    print(f"Planner response:\n{response.json()}")
     queries = [query.strip() for query in response.queries if query.strip()]
-
+    print(f"Planned queries: {queries}")
     updated_state = state.copy()
     updated_state["rewritten_queries"] = queries[:4] if queries else [state["question"]]
     return updated_state
