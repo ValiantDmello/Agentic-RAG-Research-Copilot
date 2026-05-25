@@ -200,6 +200,18 @@ def build_agent_graph():
     return graph.compile()
 
 
+agent_app = build_agent_graph()
+
+
 def answer_question(question: str) -> dict:
     """Run the agent workflow for a single user question."""
-    raise NotImplementedError("TODO 13: implement answer_question()")
+    initial_state: AgentState = {
+        "question": question,
+        "rewritten_queries": [],
+        "retrieved_chunks": [],
+        "evidence_sufficient": False,
+        "answer": "",
+        "attempts": 0,
+    }
+
+    return agent_app.invoke(initial_state)

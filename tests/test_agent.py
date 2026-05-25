@@ -2,6 +2,7 @@ from src.agent import (
     EvidenceEvaluation,
     QueryPlan,
     RetryQueryPlan,
+    answer_question,
     build_agent_graph,
     decide_next_step,
     evaluate_evidence,
@@ -57,6 +58,16 @@ class FakeAnswerLLM:
     def invoke(self, prompt: str) -> FakeAnswerResponse:
         self.prompts.append(prompt)
         return FakeAnswerResponse(self.content)
+
+
+class FakeAgentApp:
+    def __init__(self, result: dict) -> None:
+        self.result = result
+        self.invocations: list[dict] = []
+
+    def invoke(self, state: dict) -> dict:
+        self.invocations.append(state)
+        return self.result
 
 
 def test_format_evidence_includes_source_page_chunk_id_and_text() -> None:
@@ -558,3 +569,31 @@ def test_build_agent_graph_executes_happy_path_with_mocked_nodes(monkeypatch) ->
     ]
     assert result["answer"] == "Grounded answer"
     assert result["evidence_sufficient"] is True
+
+
+def test_answer_question_builds_initial_state_and_invokes_agent_app(monkeypatch) -> None:
+    """The public wrapper should hide graph details and pass a clean initial state."""
+    fake_result = {
+        "question": "What is the conclusion?",
+        "rewritten_queries": ["planned query"],
+        "retrieved_chunks": [],
+        "evidence_sufficient": True,
+        "answer": "Grounded answer",
+        "attempts": 1,
+    }
+    fake_agent_app = FakeAgentApp(fake_result)
+    monkeypatch.setattr("src.agent.agent_app", fake_agent_app)
+
+    result = answer_question("What is the conclusion?")
+
+    assert fake_agent_app.invocations == [
+        {
+            "question": "What is the conclusion?",
+            "rewritten_queries": [],
+            "retrieved_chunks": [],
+            "evidence_sufficient": False,
+            "answer": "",
+            "attempts": 0,
+        }
+    ]
+    assert result == fake_result
