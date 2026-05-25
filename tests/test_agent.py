@@ -2,6 +2,8 @@ from src.agent import (
     EvidenceEvaluation,
     QueryPlan,
     RetryQueryPlan,
+    build_agent_graph,
+    decide_next_step,
     evaluate_evidence,
     format_evidence,
     generate_answer,
@@ -451,3 +453,108 @@ def test_generate_answer_uses_quiz_prompt_when_question_requests_quiz(
     assert len(fake_llm.prompts) == 1
     assert "Create a short quiz using only the provided evidence." in fake_llm.prompts[0]
     assert "Topic or request:\nCreate a quiz about this document." in fake_llm.prompts[0]
+
+
+def test_decide_next_step_returns_generate_answer_when_evidence_is_sufficient() -> None:
+    """Sufficient evidence should skip retries and move straight to answer generation."""
+    state = {
+        "question": "What is the conclusion?",
+        "rewritten_queries": [],
+        "retrieved_chunks": [],
+        "evidence_sufficient": True,
+        "answer": "",
+        "attempts": 1,
+    }
+
+    assert decide_next_step(state) == "generate_answer"
+
+
+def test_decide_next_step_returns_retry_when_evidence_is_weak_and_attempts_remain() -> None:
+    """Weak evidence should trigger a retry while the workflow is still under the limit."""
+    state = {
+        "question": "What is the conclusion?",
+        "rewritten_queries": [],
+        "retrieved_chunks": [],
+        "evidence_sufficient": False,
+        "answer": "",
+        "attempts": 1,
+    }
+
+    assert decide_next_step(state) == "rewrite_queries_for_retry"
+
+
+def test_decide_next_step_returns_generate_answer_at_max_attempts() -> None:
+    """Once the retry limit is reached, the workflow should stop retrying."""
+    state = {
+        "question": "What is the conclusion?",
+        "rewritten_queries": [],
+        "retrieved_chunks": [],
+        "evidence_sufficient": False,
+        "answer": "",
+        "attempts": 2,
+    }
+
+    assert decide_next_step(state) == "generate_answer"
+
+
+def test_build_agent_graph_returns_compiled_graph() -> None:
+    """Graph construction should compile into an invokable LangGraph app."""
+    graph = build_agent_graph()
+
+    assert hasattr(graph, "invoke")
+
+
+def test_build_agent_graph_executes_happy_path_with_mocked_nodes(monkeypatch) -> None:
+    """The compiled graph should move from planning to answer generation on sufficient evidence."""
+    call_order: list[str] = []
+
+    def fake_plan_queries(state):
+        call_order.append("plan_queries")
+        updated = state.copy()
+        updated["rewritten_queries"] = ["planned query"]
+        return updated
+
+    def fake_retrieve_evidence(state):
+        call_order.append("retrieve_evidence")
+        updated = state.copy()
+        updated["retrieved_chunks"] = []
+        updated["attempts"] = state["attempts"] + 1
+        return updated
+
+    def fake_evaluate_evidence(state):
+        call_order.append("evaluate_evidence")
+        updated = state.copy()
+        updated["evidence_sufficient"] = True
+        return updated
+
+    def fake_generate_answer(state):
+        call_order.append("generate_answer")
+        updated = state.copy()
+        updated["answer"] = "Grounded answer"
+        return updated
+
+    monkeypatch.setattr("src.agent.plan_queries", fake_plan_queries)
+    monkeypatch.setattr("src.agent.retrieve_evidence", fake_retrieve_evidence)
+    monkeypatch.setattr("src.agent.evaluate_evidence", fake_evaluate_evidence)
+    monkeypatch.setattr("src.agent.generate_answer", fake_generate_answer)
+
+    graph = build_agent_graph()
+    initial_state = {
+        "question": "What is the conclusion?",
+        "rewritten_queries": [],
+        "retrieved_chunks": [],
+        "evidence_sufficient": False,
+        "answer": "",
+        "attempts": 0,
+    }
+
+    result = graph.invoke(initial_state)
+
+    assert call_order == [
+        "plan_queries",
+        "retrieve_evidence",
+        "evaluate_evidence",
+        "generate_answer",
+    ]
+    assert result["answer"] == "Grounded answer"
+    assert result["evidence_sufficient"] is True

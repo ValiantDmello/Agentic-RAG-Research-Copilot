@@ -164,12 +164,40 @@ def generate_answer(state: AgentState) -> AgentState:
 
 def decide_next_step(state: AgentState) -> str:
     """Choose whether to retry retrieval or finish with answer generation."""
-    raise NotImplementedError("TODO 10: implement decide_next_step()")
+    if state["evidence_sufficient"]:
+        return "generate_answer"
+
+    if state["attempts"] >= MAX_ATTEMPTS:
+        return "generate_answer"
+
+    return "rewrite_queries_for_retry"
 
 
 def build_agent_graph():
     """Create and compile the LangGraph workflow for the RAG agent."""
-    raise NotImplementedError("TODO 11: implement build_agent_graph()")
+    graph = StateGraph(AgentState)
+
+    graph.add_node("plan_queries", plan_queries)
+    graph.add_node("retrieve_evidence", retrieve_evidence)
+    graph.add_node("evaluate_evidence", evaluate_evidence)
+    graph.add_node("rewrite_queries_for_retry", rewrite_queries_for_retry)
+    graph.add_node("generate_answer", generate_answer)
+
+    graph.set_entry_point("plan_queries")
+    graph.add_edge("plan_queries", "retrieve_evidence")
+    graph.add_edge("retrieve_evidence", "evaluate_evidence")
+    graph.add_conditional_edges(
+        "evaluate_evidence",
+        decide_next_step,
+        {
+            "generate_answer": "generate_answer",
+            "rewrite_queries_for_retry": "rewrite_queries_for_retry",
+        },
+    )
+    graph.add_edge("rewrite_queries_for_retry", "retrieve_evidence")
+    graph.add_edge("generate_answer", END)
+
+    return graph.compile()
 
 
 def answer_question(question: str) -> dict:
