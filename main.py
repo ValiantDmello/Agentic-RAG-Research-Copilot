@@ -1,18 +1,8 @@
-# from src.agent import plan_queries
+# from src.agent import answer_question
 
 # def main() -> None:
-#     state = {
-#         "question": "Compare innate and adaptive immunity.",
-#         "rewritten_queries": [],
-#         "retrieved_chunks": [],
-#         "evidence_sufficient": False,
-#         "answer": "",
-#         "attempts": 0,
-#     }
-
-#     result = plan_queries(state)
+#     result = answer_question("What is the main argument of the document?")
 #     print(result)
-#     print(result["rewritten_queries"])
 
 
 # if __name__ == "__main__":

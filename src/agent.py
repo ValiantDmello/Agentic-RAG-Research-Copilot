@@ -55,6 +55,37 @@ evaluator_llm = llm.with_structured_output(EvidenceEvaluation)
 MAX_ATTEMPTS = 2
 
 
+def _log_node(name: str) -> None:
+    """Print the current graph node for learning and debugging."""
+    print(f"\n[Agent Node] {name}")
+
+
+def _log_queries(label: str, queries: list[str]) -> None:
+    """Print search queries in a compact numbered list."""
+    print(label)
+    if not queries:
+        print("  (none)")
+        return
+
+    for index, query in enumerate(queries, start=1):
+        print(f"  {index}. {query}")
+
+
+def _log_retrieved_chunks(chunks: list[RetrievedChunk]) -> None:
+    """Print retrieved chunk metadata so retrieval behavior is easy to inspect."""
+    print(f"Retrieved chunks: {len(chunks)}")
+    if not chunks:
+        print("  (none)")
+        return
+
+    for index, chunk in enumerate(chunks, start=1):
+        page_text = f", page {chunk.page}" if chunk.page is not None else ""
+        print(
+            f"  {index}. {chunk.source}{page_text} | "
+            f"{chunk.chunk_id} | score={chunk.score}"
+        )
+
+
 def format_evidence(chunks: list[RetrievedChunk]) -> str:
     """Convert retrieved chunks into a prompt-friendly evidence block."""
     formatted_chunks: list[str] = []
@@ -76,16 +107,21 @@ def format_evidence(chunks: list[RetrievedChunk]) -> str:
 
 def plan_queries(state: AgentState) -> AgentState:
     """Generate retrieval-friendly queries from the user question."""
+    _log_node("plan_queries")
+    print(f"Question: {state['question']}")
     prompt = PLANNER_PROMPT.format(question=state["question"])
     response = planner_llm.invoke(prompt)
     queries = [query.strip() for query in response.queries if query.strip()]
     updated_state = state.copy()
     updated_state["rewritten_queries"] = queries[:4] if queries else [state["question"]]
+    _log_queries("Planned queries:", updated_state["rewritten_queries"])
     return updated_state
 
 
 def retrieve_evidence(state: AgentState) -> AgentState:
     """Search the vector store for each planned query and accumulate unique evidence."""
+    _log_node("retrieve_evidence")
+    _log_queries("Queries used for retrieval:", state["rewritten_queries"])
     all_chunks = list(state["retrieved_chunks"])
     seen_chunk_ids = {chunk.chunk_id for chunk in all_chunks}
 
@@ -102,11 +138,14 @@ def retrieve_evidence(state: AgentState) -> AgentState:
     updated_state = state.copy()
     updated_state["retrieved_chunks"] = all_chunks
     updated_state["attempts"] = state["attempts"] + 1
+    print(f"Retrieval attempts so far: {updated_state['attempts']}")
+    _log_retrieved_chunks(updated_state["retrieved_chunks"])
     return updated_state
 
 
 def evaluate_evidence(state: AgentState) -> AgentState:
     """Decide whether the retrieved evidence is sufficient to answer safely."""
+    _log_node("evaluate_evidence")
     evidence = format_evidence(state["retrieved_chunks"])
     prompt = EVIDENCE_EVALUATOR_PROMPT.format(
         question=state["question"],
@@ -116,11 +155,13 @@ def evaluate_evidence(state: AgentState) -> AgentState:
 
     updated_state = state.copy()
     updated_state["evidence_sufficient"] = response.sufficient
+    print(f"Evidence sufficient: {updated_state['evidence_sufficient']}")
     return updated_state
 
 
 def rewrite_queries_for_retry(state: AgentState) -> AgentState:
     """Rewrite queries for a second retrieval attempt when evidence is weak."""
+    _log_node("rewrite_queries_for_retry")
     evidence = format_evidence(state["retrieved_chunks"])
     prior_queries = "\n".join(f"- {query}" for query in state["rewritten_queries"])
     # With the current AgentState, retries only remember the latest query set.
@@ -136,11 +177,13 @@ def rewrite_queries_for_retry(state: AgentState) -> AgentState:
 
     updated_state = state.copy()
     updated_state["rewritten_queries"] = queries[:2] if queries else [state["question"]]
+    _log_queries("Retry queries:", updated_state["rewritten_queries"])
     return updated_state
 
 
 def generate_answer(state: AgentState) -> AgentState:
     """Create the final grounded answer or quiz from retrieved evidence."""
+    _log_node("generate_answer")
     evidence = format_evidence(state["retrieved_chunks"])
 
     if "quiz" in state["question"].lower():
@@ -159,17 +202,22 @@ def generate_answer(state: AgentState) -> AgentState:
 
     updated_state = state.copy()
     updated_state["answer"] = response_text
+    print(f"Answer generated. Length: {len(response_text)} characters")
     return updated_state
 
 
 def decide_next_step(state: AgentState) -> str:
     """Choose whether to retry retrieval or finish with answer generation."""
+    _log_node("decide_next_step")
     if state["evidence_sufficient"]:
+        print("Decision: generate_answer (evidence is sufficient)")
         return "generate_answer"
 
     if state["attempts"] >= MAX_ATTEMPTS:
+        print("Decision: generate_answer (max attempts reached)")
         return "generate_answer"
 
+    print("Decision: rewrite_queries_for_retry (need another retrieval attempt)")
     return "rewrite_queries_for_retry"
 
 
