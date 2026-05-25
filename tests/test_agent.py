@@ -1,4 +1,11 @@
-from src.agent import QueryPlan, format_evidence, plan_queries, retrieve_evidence
+from src.agent import (
+    EvidenceEvaluation,
+    QueryPlan,
+    evaluate_evidence,
+    format_evidence,
+    plan_queries,
+    retrieve_evidence,
+)
 from src.schemas import RetrievedChunk
 
 
@@ -10,6 +17,21 @@ class FakePlannerLLM:
     def invoke(self, prompt: str) -> QueryPlan:
         self.prompts.append(prompt)
         return QueryPlan(queries=self.queries)
+
+
+class FakeTextResponse:
+    def __init__(self, sufficient: bool) -> None:
+        self.sufficient = sufficient
+
+
+class FakeTextLLM:
+    def __init__(self, sufficient: bool) -> None:
+        self.sufficient = sufficient
+        self.prompts: list[str] = []
+
+    def invoke(self, prompt: str) -> EvidenceEvaluation:
+        self.prompts.append(prompt)
+        return EvidenceEvaluation(sufficient=self.sufficient)
 
 
 def test_format_evidence_includes_source_page_chunk_id_and_text() -> None:
@@ -196,3 +218,56 @@ def test_retrieve_evidence_still_increments_attempts_when_no_matches(monkeypatch
     assert search_calls == [("missing concept", 4)]
     assert result["retrieved_chunks"] == []
     assert result["attempts"] == 2
+
+
+def test_evaluate_evidence_marks_state_sufficient_when_llm_says_sufficient(
+    monkeypatch,
+) -> None:
+    """Evaluator should set the sufficiency flag when the model approves the evidence."""
+    fake_llm = FakeTextLLM(True)
+    monkeypatch.setattr("src.agent.evaluator_llm", fake_llm)
+    retrieved_chunk = RetrievedChunk(
+        chunk_id="doc::page-4::chunk-0",
+        text="A grounded supporting passage.",
+        source="doc.md",
+        page=4,
+        score=0.93,
+    )
+    initial_state = {
+        "question": "What is the main conclusion?",
+        "rewritten_queries": ["main conclusion"],
+        "retrieved_chunks": [retrieved_chunk],
+        "evidence_sufficient": False,
+        "answer": "",
+        "attempts": 1,
+    }
+
+    result = evaluate_evidence(initial_state)
+
+    assert result["evidence_sufficient"] is True
+    assert initial_state["evidence_sufficient"] is False
+    assert len(fake_llm.prompts) == 1
+    assert "Question:\nWhat is the main conclusion?" in fake_llm.prompts[0]
+    assert "[Evidence 1] Source: doc.md, page 4" in fake_llm.prompts[0]
+    assert "Chunk ID: doc::page-4::chunk-0" in fake_llm.prompts[0]
+    assert "Text: A grounded supporting passage." in fake_llm.prompts[0]
+
+
+def test_evaluate_evidence_marks_state_insufficient_for_any_non_sufficient_reply(
+    monkeypatch,
+) -> None:
+    """Evaluator should use the structured boolean decision from the model output."""
+    fake_llm = FakeTextLLM(False)
+    monkeypatch.setattr("src.agent.evaluator_llm", fake_llm)
+    initial_state = {
+        "question": "How was the method validated?",
+        "rewritten_queries": ["method validation"],
+        "retrieved_chunks": [],
+        "evidence_sufficient": True,
+        "answer": "",
+        "attempts": 1,
+    }
+
+    result = evaluate_evidence(initial_state)
+
+    assert result["evidence_sufficient"] is False

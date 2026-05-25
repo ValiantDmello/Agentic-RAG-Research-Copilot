@@ -29,7 +29,16 @@ class QueryPlan(BaseModel):
     )
 
 
+class EvidenceEvaluation(BaseModel):
+    """Structured evaluator output for evidence sufficiency decisions."""
+
+    sufficient: bool = Field(
+        description="Whether the retrieved evidence is sufficient to answer safely.",
+    )
+
+
 planner_llm = llm.with_structured_output(QueryPlan)
+evaluator_llm = llm.with_structured_output(EvidenceEvaluation)
 
 MAX_ATTEMPTS = 2
 
@@ -57,9 +66,7 @@ def plan_queries(state: AgentState) -> AgentState:
     """Generate retrieval-friendly queries from the user question."""
     prompt = PLANNER_PROMPT.format(question=state["question"])
     response = planner_llm.invoke(prompt)
-    print(f"Planner response:\n{response.json()}")
     queries = [query.strip() for query in response.queries if query.strip()]
-    print(f"Planned queries: {queries}")
     updated_state = state.copy()
     updated_state["rewritten_queries"] = queries[:4] if queries else [state["question"]]
     return updated_state
@@ -88,7 +95,16 @@ def retrieve_evidence(state: AgentState) -> AgentState:
 
 def evaluate_evidence(state: AgentState) -> AgentState:
     """Decide whether the retrieved evidence is sufficient to answer safely."""
-    raise NotImplementedError("TODO 7: implement evaluate_evidence()")
+    evidence = format_evidence(state["retrieved_chunks"])
+    prompt = EVIDENCE_EVALUATOR_PROMPT.format(
+        question=state["question"],
+        evidence=evidence,
+    )
+    response = evaluator_llm.invoke(prompt)
+
+    updated_state = state.copy()
+    updated_state["evidence_sufficient"] = response.sufficient
+    return updated_state
 
 
 def rewrite_queries_for_retry(state: AgentState) -> AgentState:
