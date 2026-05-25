@@ -1388,3 +1388,30 @@ Once the MVP works, add:
 - Docker deployment.
 - Evaluation dashboard.
 - Export answers and quizzes to Markdown or PDF.
+
+---
+
+## Optional Improvement: Preserve Query History Across Retries
+
+The simple Step 12 workflow usually stores only the **current** rewritten query list in agent state.
+
+That is enough when you allow only one retry.
+
+However, if you later increase the retry limit beyond one retry, the agent may accidentally repeat search queries from an earlier attempt because it no longer remembers the full query history.
+
+Recommended improvement:
+
+- Add query history to the graph state.
+- Store either:
+  - `all_queries_tried: list[str]`, or
+  - `query_history: list[list[str]]`
+- Pass the full query history into the retry-rewrite prompt.
+- Instruct the model to avoid repeating or lightly rewording earlier failed queries.
+
+Why this helps:
+
+- makes retries meaningfully different from each other
+- reduces wasted retrieval attempts
+- makes the workflow easier to debug and inspect
+
+This is not required for the MVP with a single retry, but it is a good upgrade for a more reliable agentic retrieval loop.

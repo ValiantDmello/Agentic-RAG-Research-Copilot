@@ -59,3 +59,24 @@ Topic or request:
 Evidence:
 {evidence}
 """
+
+
+RETRY_QUERY_PROMPT = """
+The first retrieval attempt did not find enough evidence.
+
+User question:
+{question}
+
+Previous search queries:
+{previous_queries}
+
+Retrieved evidence from the failed attempt:
+{evidence}
+
+Generate 1 to 2 better document search queries for a retry.
+
+Rules:
+- Use more precise document-search phrasing.
+- Prefer likely document terminology over conversational phrasing.
+- Avoid repeating the same weak query wording.
+"""

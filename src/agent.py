@@ -10,6 +10,7 @@ from src.prompts import (
     EVIDENCE_EVALUATOR_PROMPT,
     PLANNER_PROMPT,
     QUIZ_PROMPT,
+    RETRY_QUERY_PROMPT,
 )
 from src.retriever import search_documents
 from src.schemas import AgentState, RetrievedChunk
@@ -29,6 +30,16 @@ class QueryPlan(BaseModel):
     )
 
 
+class RetryQueryPlan(BaseModel):
+    """Structured retry-planner output for a second retrieval attempt."""
+
+    queries: list[str] = Field(
+        min_length=1,
+        max_length=2,
+        description="One or two improved retrieval queries for a retry attempt.",
+    )
+
+
 class EvidenceEvaluation(BaseModel):
     """Structured evaluator output for evidence sufficiency decisions."""
 
@@ -38,6 +49,7 @@ class EvidenceEvaluation(BaseModel):
 
 
 planner_llm = llm.with_structured_output(QueryPlan)
+retry_planner_llm = llm.with_structured_output(RetryQueryPlan)
 evaluator_llm = llm.with_structured_output(EvidenceEvaluation)
 
 MAX_ATTEMPTS = 2
@@ -109,7 +121,23 @@ def evaluate_evidence(state: AgentState) -> AgentState:
 
 def rewrite_queries_for_retry(state: AgentState) -> AgentState:
     """Rewrite queries for a second retrieval attempt when evidence is weak."""
-    raise NotImplementedError("TODO 8: implement rewrite_queries_for_retry()")
+    evidence = format_evidence(state["retrieved_chunks"])
+    prior_queries = "\n".join(f"- {query}" for query in state["rewritten_queries"])
+    # With the current AgentState, retries only remember the latest query set.
+    # If we allow more than one retry later, add query history to state so a
+    # third attempt can also avoid repeating the first attempt's queries.
+    # Also, I'd rather save input tokens, I am broke...lol
+    prompt = RETRY_QUERY_PROMPT.format(
+        question=state["question"],
+        previous_queries=prior_queries or "- None",
+        evidence=evidence or "No evidence retrieved.",
+    )
+    response = retry_planner_llm.invoke(prompt)
+    queries = [query.strip() for query in response.queries if query.strip()]
+
+    updated_state = state.copy()
+    updated_state["rewritten_queries"] = queries[:2] if queries else [state["question"]]
+    return updated_state
 
 
 def generate_answer(state: AgentState) -> AgentState:

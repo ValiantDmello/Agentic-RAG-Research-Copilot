@@ -1,9 +1,11 @@
 from src.agent import (
     EvidenceEvaluation,
     QueryPlan,
+    RetryQueryPlan,
     evaluate_evidence,
     format_evidence,
     plan_queries,
+    rewrite_queries_for_retry,
     retrieve_evidence,
 )
 from src.schemas import RetrievedChunk
@@ -19,9 +21,14 @@ class FakePlannerLLM:
         return QueryPlan(queries=self.queries)
 
 
-class FakeTextResponse:
-    def __init__(self, sufficient: bool) -> None:
-        self.sufficient = sufficient
+class FakeRetryPlannerLLM:
+    def __init__(self, queries: list[str]) -> None:
+        self.queries = queries
+        self.prompts: list[str] = []
+
+    def invoke(self, prompt: str) -> RetryQueryPlan:
+        self.prompts.append(prompt)
+        return RetryQueryPlan(queries=self.queries)
 
 
 class FakeTextLLM:
@@ -271,3 +278,56 @@ def test_evaluate_evidence_marks_state_insufficient_for_any_non_sufficient_reply
     result = evaluate_evidence(initial_state)
 
     assert result["evidence_sufficient"] is False
+
+
+def test_rewrite_queries_for_retry_overwrites_queries_with_retry_plan(
+    monkeypatch,
+) -> None:
+    """Retry rewriting should replace the old search plan with cleaner retry queries."""
+    fake_llm = FakeRetryPlannerLLM([" narrower concept ", "author terminology"])
+    monkeypatch.setattr("src.agent.retry_planner_llm", fake_llm)
+    retrieved_chunk = RetrievedChunk(
+        chunk_id="doc::page-2::chunk-1",
+        text="A partial passage that was not enough.",
+        source="doc.md",
+        page=2,
+        score=0.61,
+    )
+    initial_state = {
+        "question": "How does the system validate its findings?",
+        "rewritten_queries": ["validate findings", "system validation"],
+        "retrieved_chunks": [retrieved_chunk],
+        "evidence_sufficient": False,
+        "answer": "",
+        "attempts": 1,
+    }
+
+    result = rewrite_queries_for_retry(initial_state)
+
+    assert result["rewritten_queries"] == ["narrower concept", "author terminology"]
+    assert initial_state["rewritten_queries"] == ["validate findings", "system validation"]
+    assert len(fake_llm.prompts) == 1
+    assert "The first retrieval attempt did not find enough evidence." in fake_llm.prompts[0]
+    assert "User question:\nHow does the system validate its findings?" in fake_llm.prompts[0]
+    assert "Previous search queries:\n- validate findings\n- system validation" in fake_llm.prompts[0]
+    assert "[Evidence 1] Source: doc.md, page 2" in fake_llm.prompts[0]
+
+
+def test_rewrite_queries_for_retry_falls_back_to_original_question_when_empty(
+    monkeypatch,
+) -> None:
+    """If the retry planner returns only blanks, keep the original question as the query."""
+    fake_llm = FakeRetryPlannerLLM([" ", ""])
+    monkeypatch.setattr("src.agent.retry_planner_llm", fake_llm)
+    initial_state = {
+        "question": "What changed in the revised architecture?",
+        "rewritten_queries": ["revised architecture"],
+        "retrieved_chunks": [],
+        "evidence_sufficient": False,
+        "answer": "",
+        "attempts": 1,
+    }
+
+    result = rewrite_queries_for_retry(initial_state)
+
+    assert result["rewritten_queries"] == ["What changed in the revised architecture?"]
