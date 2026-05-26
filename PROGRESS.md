@@ -76,6 +76,11 @@ The project now has a working Streamlit app on top of the RAG pipeline, includin
 - Implemented `rewrite_queries_for_retry()` to generate better retry queries using the question, previous queries, and retrieved evidence
 - Moved the retry prompt into [prompts.py](src/prompts.py) to keep prompt definitions centralized and reviewable
 - Implemented `generate_answer()` to choose between grounded answer generation and quiz generation based on the user request
+- Added `GROUNDING_CHECK_PROMPT` to [prompts.py](src/prompts.py) for post-answer grounding review
+- Implemented structured grounding-check output with `GroundingCheckOutput`
+- Implemented `check_grounding()` to review the final answer against retrieved evidence after answer generation
+- Added `GroundingCheckResult` to [schemas.py](src/schemas.py) so grounding feedback has an explicit typed shape
+- Updated grounding validation so `suggested_fix` may be empty only when the answer is grounded, and is required when grounding fails
 - Implemented `decide_next_step()` to enforce the workflow retry policy:
   - answer immediately when evidence is sufficient
   - answer after the retry limit is reached
@@ -87,6 +92,7 @@ The project now has a working Streamlit app on top of the RAG pipeline, includin
   - `generate_answer -> END`
 - Added `agent_app = build_agent_graph()` so the compiled graph is created once and reused
 - Implemented `answer_question(question)` as the public workflow entrypoint that initializes state and invokes the compiled graph
+- Updated `answer_question(question)` to attach a structured grounding report to the final workflow result
 - Added console tracing in [agent.py](src/agent.py) for learning/debugging:
   - prints each node name as the graph runs
   - prints planned queries
@@ -104,6 +110,8 @@ The project now has a working Streamlit app on top of the RAG pipeline, includin
 - Tested evaluator branching behavior with structured sufficiency output
 - Tested retry-query rewriting behavior and fallback behavior
 - Tested answer-generation prompt routing for normal answers and quiz requests
+- Tested structured grounding-check behavior, including trimming, no-evidence fallback prompting, and empty `suggested_fix` handling for grounded answers
+- Tested that ungrounded results require a non-empty `suggested_fix`
 - Tested `decide_next_step()` for all three workflow outcomes
 - Tested LangGraph compilation and mocked happy-path execution
 - Tested `answer_question()` initial-state construction and graph invocation
@@ -129,6 +137,7 @@ The project now has a working Streamlit app on top of the RAG pipeline, includin
 - Implemented `_run_question()` to validate the prompt, execute `answer_question()`, and persist the latest workflow result
 - Implemented `_render_result()` to display:
   - the final answer
+  - the grounding-check result, unsupported claims, and suggested fix
   - the original question
   - evidence sufficiency and retrieval-attempt metadata
   - the planned search queries
@@ -177,25 +186,24 @@ Important design decisions made during implementation:
 - `ExtractedPage`: raw text extracted from a file before chunking
 - `DocumentChunk`: chunked text ready for embedding and storage
 - `RetrievedChunk`: retrieved search result with optional relevance metadata
-- `AgentState`: shared LangGraph workflow state for question, rewritten queries, retrieved chunks, evidence sufficiency, answer text, and attempt count
+- `GroundingCheckResult`: structured grounding-review result with status, unsupported claims, and conditional fix guidance
+- `AgentState`: shared LangGraph workflow state for question, rewritten queries, retrieved chunks, evidence sufficiency, answer text, attempt count, and grounding report
 
 ## Current App State
 
 - Users can upload `pdf`, `txt`, and `md` files from the sidebar
 - Uploaded files are saved locally, ingested, chunked, and added to Chroma
 - Users can ask a question in the main panel and run the LangGraph workflow
-- The UI shows the final answer, workflow metadata, planned queries, and retrieved evidence
+- The UI shows the final answer, a structured grounding check, workflow metadata, planned queries, and retrieved evidence
 - Ingestion feedback persists across reruns through Streamlit session state
 - The latest answer also persists across reruns through Streamlit session state
 - The app can be manually checked with the sample content and question set stored under [Sample/](Sample/)
 
 ## Next Step
 
-Manually exercise the Streamlit app with the sample files in [Sample/](Sample/) and evaluate answer quality, citation behavior, and failure handling when evidence is weak or missing.
+Implement Step 20 duplicate-file protection during ingestion.
 
 ## After That
 
-- strengthen answer grounding and citation validation
 - add duplicate-file protection during ingestion
-- consider a grounding report in the UI
 - decide later whether to keep console tracing always-on or gate it behind a debug flag
