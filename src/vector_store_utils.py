@@ -11,6 +11,7 @@ import argparse
 import json
 from typing import Any, Sequence
 
+from src.utils import clear_ingested_hashes
 from src.vector_store import get_vector_store
 
 
@@ -60,17 +61,25 @@ def list_chunk_metadata(limit: int = 50) -> list[dict[str, Any]]:
 
     return rows
 
-
+# Not Implmented because current hash log design does not allow safe cleanup of hashes when deleting by source.
 def delete_chunks_by_source(source: str) -> int:
     """Delete every chunk for a source and return how many were removed."""
-    collection = _get_collection()
-    payload = collection.get(where={"source": source}, include=[])
-    ids = payload.get("ids", [])
-
-    if ids:
-        collection.delete(ids=ids)
-
-    return len(ids)
+    # collection = _get_collection()
+    # payload = collection.get(where={"source": source}, include=[])
+    # ids = payload.get("ids", [])
+    #
+    # if ids:
+    #     collection.delete(ids=ids)
+    #     # We intentionally do not remove any entry from the hash log here yet.
+    #     # The current log stores hashes only, without a source-to-hash mapping,
+    #     # so we cannot safely determine which hash belongs to this source or
+    #     # whether the same hash is still referenced by another ingested file.
+    #
+    # return len(ids)
+    raise NotImplementedError(
+        "delete_chunks_by_source is not implemented until hash-log and source "
+        "tracking can be kept in sync."
+    )
 
 
 def clear_vector_store() -> int:
@@ -83,6 +92,8 @@ def clear_vector_store() -> int:
         ids = payload.get("ids", [])
         if ids:
             collection.delete(ids=ids)
+
+    clear_ingested_hashes()
 
     return count
 

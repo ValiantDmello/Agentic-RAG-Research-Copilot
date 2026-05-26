@@ -148,6 +148,15 @@ The project now has a working Streamlit app on top of the RAG pipeline, includin
 - Added a loading spinner around workflow execution in the app
 - Configured the Streamlit page title, icon, and wide layout
 - Added a document-ingestion action flow that supports multiple uploaded files in one run
+- Added [utils.py](src/utils.py) for duplicate-ingestion hashing helpers
+- Implemented exact duplicate-file protection during Streamlit ingestion using SHA-256 file hashes
+- Updated the ingestion flow to skip already ingested files and show a warning instead of re-indexing duplicate content
+- Recorded file hashes only after successful ingestion so failed uploads do not block later retries
+- Updated `clear_vector_store()` to also reset the duplicate-ingestion hash log
+- Marked `delete_chunks_by_source()` as not implemented until source-level deletion can be kept in sync with hash tracking
+- Created [tests/test_utils.py](tests/test_utils.py)
+- Tested hash equality for identical files, hash differences for different files, and hash-log recording/lookup behavior
+- Verified the new duplicate-protection helper tests pass with `uv run pytest tests/test_utils.py --basetemp .pytest_tmp`
 - Added sample verification material under [Sample/](Sample/) to manually check the Streamlit app
 - Added [Sample/agentic_rag_test_questions.md](Sample/agentic_rag_test_questions.md) as a ready-made manual test question set
 
@@ -193,17 +202,20 @@ Important design decisions made during implementation:
 
 - Users can upload `pdf`, `txt`, and `md` files from the sidebar
 - Uploaded files are saved locally, ingested, chunked, and added to Chroma
+- Exact duplicate file contents are skipped during ingestion based on SHA-256 hashes
 - Users can ask a question in the main panel and run the LangGraph workflow
 - The UI shows the final answer, a structured grounding check, workflow metadata, planned queries, and retrieved evidence
 - Ingestion feedback persists across reruns through Streamlit session state
 - The latest answer also persists across reruns through Streamlit session state
 - The app can be manually checked with the sample content and question set stored under [Sample/](Sample/)
+- Full vector-store clears also reset the duplicate-ingestion hash log
+- Source-specific vector-store deletion is intentionally not implemented yet because the current hash log does not track source-to-hash relationships
 
 ## Next Step
 
-Implement Step 20 duplicate-file protection during ingestion.
+Decide how to evolve duplicate tracking from a hash-only log into source-aware ingestion metadata.
 
 ## After That
 
-- add duplicate-file protection during ingestion
+- implement safe source-specific deletion that keeps duplicate-tracking metadata in sync
 - decide later whether to keep console tracing always-on or gate it behind a debug flag

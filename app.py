@@ -7,6 +7,7 @@ from src.agent import answer_question
 from src.chunking import chunk_pages
 from src.config import UPLOAD_DIR
 from src.ingestion import extract_document_text
+from src.utils import already_ingested, file_hash, record_ingested
 from src.vector_store import add_chunks_to_vector_store
 
 Path(UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
@@ -40,9 +41,17 @@ def _ingest_uploaded_files(uploaded_files: list[UploadedFile]) -> None:
         save_path.write_bytes(uploaded_file.getbuffer())
 
         try:
+            hash_value = file_hash(str(save_path))
+            if already_ingested(hash_value):
+                messages.append(
+                    ("warning", f"Skipping {uploaded_file.name}; already ingested.")
+                )
+                continue
+
             pages = extract_document_text(str(save_path))
             chunks = chunk_pages(pages)
             chunk_count = add_chunks_to_vector_store(chunks)
+            record_ingested(hash_value)
             total_chunks += chunk_count
             messages.append(
                 ("success", f"Ingested {uploaded_file.name}: {chunk_count} chunks")
