@@ -8,12 +8,13 @@ from src.config import OPENAI_MODEL
 from src.prompts import (
     ANSWER_PROMPT,
     EVIDENCE_EVALUATOR_PROMPT,
+    GROUNDING_CHECK_PROMPT,
     PLANNER_PROMPT,
     QUIZ_PROMPT,
     RETRY_QUERY_PROMPT,
 )
 from src.retriever import search_documents
-from src.schemas import AgentState, RetrievedChunk
+from src.schemas import AgentState, GroundingCheckResult, RetrievedChunk
 
 # One shared model powers planning, evidence evaluation, retries, and answer generation.
 # Temperature stays at 0 because this project values reliability over creativity.
@@ -48,9 +49,24 @@ class EvidenceEvaluation(BaseModel):
     )
 
 
+class GroundingCheckOutput(BaseModel):
+    """Structured post-answer grounding review for UI and safety reporting."""
+
+    grounded: bool = Field(
+        description="Whether the answer is fully supported by the retrieved evidence.",
+    )
+    unsupported_claims: list[str] = Field(
+        description="Claims in the answer that are not directly supported by evidence.",
+    )
+    suggested_fix: str = Field(
+        description="How to revise the answer so it stays faithful to the evidence.",
+    )
+
+
 planner_llm = llm.with_structured_output(QueryPlan)
 retry_planner_llm = llm.with_structured_output(RetryQueryPlan)
 evaluator_llm = llm.with_structured_output(EvidenceEvaluation)
+grounding_checker_llm = llm.with_structured_output(GroundingCheckOutput)
 
 MAX_ATTEMPTS = 2
 
@@ -206,6 +222,28 @@ def generate_answer(state: AgentState) -> AgentState:
     return updated_state
 
 
+def check_grounding(
+    question: str,
+    chunks: list[RetrievedChunk],
+    answer: str,
+) -> GroundingCheckResult:
+    """Review whether the generated answer is fully supported by retrieved evidence."""
+    evidence = format_evidence(chunks)
+    prompt = GROUNDING_CHECK_PROMPT.format(
+        question=question,
+        evidence=evidence or "No evidence retrieved.",
+        answer=answer,
+    )
+    response = grounding_checker_llm.invoke(prompt)
+    return GroundingCheckResult(
+        grounded=response.grounded,
+        unsupported_claims=[
+            claim.strip() for claim in response.unsupported_claims if claim.strip()
+        ],
+        suggested_fix=response.suggested_fix.strip(),
+    )
+
+
 def decide_next_step(state: AgentState) -> str:
     """Choose whether to retry retrieval or finish with answer generation."""
     _log_node("decide_next_step")
@@ -260,6 +298,14 @@ def answer_question(question: str) -> dict:
         "evidence_sufficient": False,
         "answer": "",
         "attempts": 0,
+        "grounding_report": None,
     }
-
-    return agent_app.invoke(initial_state)
+    result = agent_app.invoke(initial_state)
+    grounding_report = check_grounding(
+        question=question,
+        chunks=result["retrieved_chunks"],
+        answer=result["answer"],
+    )
+    final_result = result.copy()
+    final_result["grounding_report"] = grounding_report
+    return final_result

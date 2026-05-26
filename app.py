@@ -80,9 +80,29 @@ def _render_result() -> None:
     result = st.session_state.latest_result
     if not result:
         return
+    grounding_report = result.get("grounding_report")
 
     st.subheader("Answer")
     st.markdown(result["answer"])
+
+    if grounding_report is not None:
+        st.subheader("Grounding Check")
+        if grounding_report.grounded:
+            st.success("The answer appears grounded in the retrieved evidence.")
+        else:
+            st.warning("The answer may include claims not fully supported by the evidence.")
+
+        st.write(f"Grounded: `{grounding_report.grounded}`")
+
+        if grounding_report.unsupported_claims:
+            st.write("Unsupported claims:")
+            for claim in grounding_report.unsupported_claims:
+                st.write(f"- {claim}")
+        else:
+            st.write("Unsupported claims: none identified.")
+
+        st.write("Suggested fix:")
+        st.write(grounding_report.suggested_fix)
 
     st.subheader("Agent Details")
     st.write(f"Question: `{st.session_state.latest_question}`")

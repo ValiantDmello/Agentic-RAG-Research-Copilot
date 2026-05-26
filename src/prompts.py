@@ -80,3 +80,22 @@ Rules:
 - Prefer likely document terminology over conversational phrasing.
 - Avoid repeating the same weak query wording.
 """
+
+
+GROUNDING_CHECK_PROMPT = """
+You are checking whether an answer is grounded in retrieved evidence.
+
+Question:
+{question}
+
+Evidence:
+{evidence}
+
+Answer:
+{answer}
+
+Return:
+- Grounded: Yes or No
+- Unsupported claims: list any unsupported claims
+- Suggested fix: explain how to make the answer safer
+"""

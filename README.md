@@ -15,6 +15,7 @@ The current implementation supports PDF, TXT, and Markdown ingestion, semantic r
 - Evaluate whether the retrieved evidence is sufficient
 - Retry retrieval once with refined queries when evidence is weak
 - Generate a final answer or a quiz from the retrieved evidence
+- Run a structured grounding check on the generated answer
 - Show retrieved evidence, query plan, and workflow metadata in the UI
 
 ## Tech Stack
@@ -114,6 +115,7 @@ Then open the local URL shown in the terminal, typically `http://localhost:8501`
 3. Click `Ingest Documents`.
 4. Ask a question in the main panel.
 5. Review the generated answer, retrieval attempts, search queries, and retrieved evidence.
+6. Review the grounding check for unsupported claims and safer wording guidance.
 
 The app also routes questions containing `quiz` through a quiz-generation prompt.
 
@@ -133,6 +135,7 @@ Important behavior:
 - Retrieval results are deduplicated by `chunk_id`
 - Useful chunks are preserved across retries
 - Evidence sufficiency is modeled as a structured boolean output
+- Post-answer grounding review is modeled as a structured report
 - Console tracing is enabled in the workflow for debugging and learning
 
 ## Running Tests
@@ -192,7 +195,6 @@ The repo also includes fixtures under [tests/fixtures/](tests/fixtures/) for ing
 - Final answer citations are still in the older prompt-driven format, not the stronger stable citation-ID format from Step 18 of the implementation guide
 - Retrieval currently uses semantic similarity only; hybrid search and reranking are not implemented
 - Duplicate-file protection is not implemented yet
-- Grounding validation exists only as a planned next step, not as an enforced post-answer checker
 - The app uses local persistent storage and is aimed at single-user local development
 
 ## Security and Data Notes

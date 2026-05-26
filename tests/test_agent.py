@@ -1,9 +1,11 @@
 from src.agent import (
     EvidenceEvaluation,
+    GroundingCheckOutput,
     QueryPlan,
     RetryQueryPlan,
     answer_question,
     build_agent_graph,
+    check_grounding,
     decide_next_step,
     evaluate_evidence,
     format_evidence,
@@ -12,7 +14,9 @@ from src.agent import (
     rewrite_queries_for_retry,
     retrieve_evidence,
 )
-from src.schemas import RetrievedChunk
+import pytest
+
+from src.schemas import GroundingCheckResult, RetrievedChunk
 
 
 class FakePlannerLLM:
@@ -58,6 +62,27 @@ class FakeAnswerLLM:
     def invoke(self, prompt: str) -> FakeAnswerResponse:
         self.prompts.append(prompt)
         return FakeAnswerResponse(self.content)
+
+
+class FakeGroundingLLM:
+    def __init__(
+        self,
+        grounded: bool,
+        unsupported_claims: list[str],
+        suggested_fix: str,
+    ) -> None:
+        self.grounded = grounded
+        self.unsupported_claims = unsupported_claims
+        self.suggested_fix = suggested_fix
+        self.prompts: list[str] = []
+
+    def invoke(self, prompt: str) -> GroundingCheckOutput:
+        self.prompts.append(prompt)
+        return GroundingCheckOutput(
+            grounded=self.grounded,
+            unsupported_claims=self.unsupported_claims,
+            suggested_fix=self.suggested_fix,
+        )
 
 
 class FakeAgentApp:
@@ -467,6 +492,85 @@ def test_generate_answer_uses_quiz_prompt_when_question_requests_quiz(
     assert "Topic or request:\nCreate a quiz about this document." in fake_llm.prompts[0]
 
 
+def test_check_grounding_returns_structured_report_and_trims_claims(monkeypatch) -> None:
+    """Grounding checks should return a normalized structured report for the UI."""
+    fake_llm = FakeGroundingLLM(
+        grounded=False,
+        unsupported_claims=[" extra revenue claim ", " "],
+        suggested_fix=" Remove the unsupported claim and cite only grounded facts. ",
+    )
+    monkeypatch.setattr("src.agent.grounding_checker_llm", fake_llm)
+    retrieved_chunk = RetrievedChunk(
+        chunk_id="doc::page-3::chunk-0",
+        text="The report supports only the margin analysis.",
+        source="doc.md",
+        page=3,
+        score=0.95,
+    )
+
+    result = check_grounding(
+        question="What does the report say about revenue?",
+        chunks=[retrieved_chunk],
+        answer="The report says revenue increased by 20 percent.",
+    )
+
+    assert result == GroundingCheckResult(
+        grounded=False,
+        unsupported_claims=["extra revenue claim"],
+        suggested_fix="Remove the unsupported claim and cite only grounded facts.",
+    )
+    assert len(fake_llm.prompts) == 1
+    assert "Question:\nWhat does the report say about revenue?" in fake_llm.prompts[0]
+    assert "Citation: [1] doc.md, page 3" in fake_llm.prompts[0]
+    assert "Answer:\nThe report says revenue increased by 20 percent." in fake_llm.prompts[0]
+
+
+def test_check_grounding_uses_placeholder_when_no_evidence_exists(monkeypatch) -> None:
+    """Empty retrieval results should still produce a reviewable grounding prompt."""
+    fake_llm = FakeGroundingLLM(
+        grounded=False,
+        unsupported_claims=["Claim not supported by any retrieved text."],
+        suggested_fix="State that no supporting evidence was found.",
+    )
+    monkeypatch.setattr("src.agent.grounding_checker_llm", fake_llm)
+
+    check_grounding(
+        question="What is the conclusion?",
+        chunks=[],
+        answer="The document concludes X.",
+    )
+
+    assert "Evidence:\nNo evidence retrieved." in fake_llm.prompts[0]
+
+
+def test_check_grounding_falls_back_when_suggested_fix_is_empty(monkeypatch) -> None:
+    """Grounded answers may legitimately have no suggested fix."""
+    fake_llm = FakeGroundingLLM(
+        grounded=True,
+        unsupported_claims=[],
+        suggested_fix="   ",
+    )
+    monkeypatch.setattr("src.agent.grounding_checker_llm", fake_llm)
+
+    result = check_grounding(
+        question="What is the conclusion?",
+        chunks=[],
+        answer="The document concludes X.",
+    )
+
+    assert result.suggested_fix == ""
+
+
+def test_grounding_result_requires_fix_when_not_grounded() -> None:
+    """Ungrounded answers should always carry repair guidance."""
+    with pytest.raises(ValueError, match="suggested_fix is required"):
+        GroundingCheckResult(
+            grounded=False,
+            unsupported_claims=["Unsupported claim"],
+            suggested_fix="",
+        )
+
+
 def test_decide_next_step_returns_generate_answer_when_evidence_is_sufficient() -> None:
     """Sufficient evidence should skip retries and move straight to answer generation."""
     state = {
@@ -581,9 +685,18 @@ def test_answer_question_builds_initial_state_and_invokes_agent_app(monkeypatch)
         "evidence_sufficient": True,
         "answer": "Grounded answer",
         "attempts": 1,
+        "grounding_report": None,
     }
     fake_agent_app = FakeAgentApp(fake_result)
     monkeypatch.setattr("src.agent.agent_app", fake_agent_app)
+    monkeypatch.setattr(
+        "src.agent.check_grounding",
+        lambda question, chunks, answer: GroundingCheckResult(
+            grounded=True,
+            unsupported_claims=[],
+            suggested_fix="No changes needed.",
+        ),
+    )
 
     result = answer_question("What is the conclusion?")
 
@@ -595,6 +708,19 @@ def test_answer_question_builds_initial_state_and_invokes_agent_app(monkeypatch)
             "evidence_sufficient": False,
             "answer": "",
             "attempts": 0,
+            "grounding_report": None,
         }
     ]
-    assert result == fake_result
+    assert result == {
+        "question": "What is the conclusion?",
+        "rewritten_queries": ["planned query"],
+        "retrieved_chunks": [],
+        "evidence_sufficient": True,
+        "answer": "Grounded answer",
+        "attempts": 1,
+        "grounding_report": GroundingCheckResult(
+            grounded=True,
+            unsupported_claims=[],
+            suggested_fix="No changes needed.",
+        ),
+    }

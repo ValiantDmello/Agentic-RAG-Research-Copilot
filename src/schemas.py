@@ -1,6 +1,6 @@
 from typing import TypedDict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # Raw text extracted from a source file before we split it into chunks.
 class ExtractedPage(BaseModel):
@@ -27,6 +27,19 @@ class RetrievedChunk(BaseModel):
     score: float | None = None
 
 
+class GroundingCheckResult(BaseModel):
+    grounded: bool
+    unsupported_claims: list[str]
+    suggested_fix: str = ""
+
+    @model_validator(mode="after")
+    def validate_suggested_fix(self) -> "GroundingCheckResult":
+        has_fix = bool(self.suggested_fix.strip())
+        if not self.grounded and not has_fix:
+            raise ValueError("suggested_fix is required when grounded is False")
+        return self
+
+
 # Shared state that flows through the LangGraph agent workflow.
 class AgentState(TypedDict):
     question: str
@@ -35,3 +48,4 @@ class AgentState(TypedDict):
     evidence_sufficient: bool
     answer: str
     attempts: int
+    grounding_report: GroundingCheckResult | None
