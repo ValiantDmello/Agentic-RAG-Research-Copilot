@@ -44,6 +44,7 @@ The project now has a working Streamlit app on top of the RAG pipeline, includin
 - Implemented [vector_store.py](src/vector_store.py) with OpenAI embeddings and persistent Chroma storage
 - Added vector-store chunk-to-document conversion with stable `chunk_id` values and retrieval-friendly metadata
 - Added [vector_store_utils.py](src/vector_store_utils.py) for backend-only vector-store inspection and admin tasks
+- Added top-of-file CLI usage documentation comments to [vector_store_utils.py](src/vector_store_utils.py)
 - Created [tests/test_vector_store.py](tests/test_vector_store.py)
 - Created [tests/test_vector_store_utils.py](tests/test_vector_store_utils.py)
 - Tested vector-store indexing behavior with mocked writes
