@@ -43,9 +43,12 @@ The project now has a working Streamlit app on top of the RAG pipeline, includin
 - Documented the reliable `uv run python -m pytest` test command in `README.md`
 - Implemented [vector_store.py](src/vector_store.py) with OpenAI embeddings and persistent Chroma storage
 - Added vector-store chunk-to-document conversion with stable `chunk_id` values and retrieval-friendly metadata
+- Added [vector_store_utils.py](src/vector_store_utils.py) for backend-only vector-store inspection and admin tasks
 - Created [tests/test_vector_store.py](tests/test_vector_store.py)
+- Created [tests/test_vector_store_utils.py](tests/test_vector_store_utils.py)
 - Tested vector-store indexing behavior with mocked writes
 - Tested empty input handling for vector storage
+- Tested vector-store stats, metadata listing, selective deletion, full-clear behavior, and CLI output with mocked collections
 - Verified vector-store, chunking, and schema tests pass together with `PYTHONPATH=. uv run pytest tests/test_vector_store.py tests/test_chunking.py tests/test_schemas.py`
 - Implemented [retriever.py](src/retriever.py) with semantic search over stored chunks
 - Returned typed `RetrievedChunk` results including `text`, `source`, `page`, `chunk_id`, and relevance `score`

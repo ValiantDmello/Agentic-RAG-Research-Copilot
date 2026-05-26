@@ -664,57 +664,22 @@ def answer_question(question: str) -> dict:
 
 These helpers are useful for debugging ingestion, inspecting what is stored, and safely removing stale data without deleting the whole database every time.
 
-Update `src/vector_store.py`:
+Create `src/vector_store_utils.py`:
 
 ```python
-from langchain_chroma import Chroma
-from langchain_core.documents import Document
-from langchain_openai import OpenAIEmbeddings
+import argparse
+import json
+from typing import Any, Sequence
 
-from src.config import CHROMA_DIR, OPENAI_EMBEDDING_MODEL
-from src.schemas import DocumentChunk
-
-
-def get_embeddings() -> OpenAIEmbeddings:
-    return OpenAIEmbeddings(model=OPENAI_EMBEDDING_MODEL)
+from src.vector_store import get_vector_store
 
 
-def get_vector_store() -> Chroma:
-    return Chroma(
-        collection_name="agentic_rag_docs",
-        embedding_function=get_embeddings(),
-        persist_directory=CHROMA_DIR,
-    )
+def _get_collection() -> Any:
+    return get_vector_store()._collection
 
 
-def add_chunks_to_vector_store(chunks: list[DocumentChunk]) -> int:
-    vector_store = get_vector_store()
-
-    documents = []
-    ids = []
-
-    for chunk in chunks:
-        documents.append(
-            Document(
-                page_content=chunk.text,
-                metadata={
-                    "source": chunk.source,
-                    "page": chunk.page,
-                    "chunk_index": chunk.chunk_index,
-                    "chunk_id": chunk.chunk_id,
-                },
-            )
-        )
-        ids.append(chunk.chunk_id)
-
-    if documents:
-        vector_store.add_documents(documents=documents, ids=ids)
-
-    return len(documents)
-
-
-def get_vector_store_stats() -> dict:
-    collection = get_vector_store()._collection
+def get_vector_store_stats() -> dict[str, Any]:
+    collection = _get_collection()
     payload = collection.get(include=["metadatas"])
     metadatas = payload.get("metadatas", [])
     sources = sorted(
@@ -732,13 +697,12 @@ def get_vector_store_stats() -> dict:
     }
 
 
-def list_chunk_metadata(limit: int = 50) -> list[dict]:
-    collection = get_vector_store()._collection
+def list_chunk_metadata(limit: int = 50) -> list[dict[str, Any]]:
+    collection = _get_collection()
     payload = collection.get(limit=limit, include=["metadatas"])
-    metadatas = payload.get("metadatas", [])
     ids = payload.get("ids", [])
-
-    rows = []
+    metadatas = payload.get("metadatas", [])
+    rows: list[dict[str, Any]] = []
 
     for chunk_id, metadata in zip(ids, metadatas):
         metadata = metadata or {}
@@ -755,7 +719,7 @@ def list_chunk_metadata(limit: int = 50) -> list[dict]:
 
 
 def delete_chunks_by_source(source: str) -> int:
-    collection = get_vector_store()._collection
+    collection = _get_collection()
     payload = collection.get(where={"source": source}, include=[])
     ids = payload.get("ids", [])
 
@@ -766,7 +730,7 @@ def delete_chunks_by_source(source: str) -> int:
 
 
 def clear_vector_store() -> int:
-    collection = get_vector_store()._collection
+    collection = _get_collection()
     count = collection.count()
 
     if count:
@@ -776,6 +740,76 @@ def clear_vector_store() -> int:
             collection.delete(ids=ids)
 
     return count
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Inspect and manage the local Chroma vector store.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    subparsers.add_parser("stats", help="Show collection stats.")
+
+    list_parser = subparsers.add_parser(
+        "list-metadata",
+        help="List stored chunk metadata.",
+    )
+    list_parser.add_argument("--limit", type=int, default=50)
+
+    delete_parser = subparsers.add_parser(
+        "delete-source",
+        help="Delete all chunks for one source file.",
+    )
+    delete_parser.add_argument("source")
+    delete_parser.add_argument("--yes", action="store_true")
+
+    clear_parser = subparsers.add_parser(
+        "clear",
+        help="Delete every chunk from the vector store.",
+    )
+    clear_parser.add_argument("--yes", action="store_true")
+
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.command == "stats":
+        print(json.dumps(get_vector_store_stats(), indent=2))
+        return 0
+
+    if args.command == "list-metadata":
+        print(json.dumps(list_chunk_metadata(limit=args.limit), indent=2))
+        return 0
+
+    if args.command == "delete-source":
+        if not args.yes:
+            parser.error("delete-source requires --yes to confirm deletion.")
+        print(
+            json.dumps(
+                {
+                    "source": args.source,
+                    "deleted_chunks": delete_chunks_by_source(args.source),
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    if args.command == "clear":
+        if not args.yes:
+            parser.error("clear requires --yes to confirm deletion.")
+        print(json.dumps({"deleted_chunks": clear_vector_store()}, indent=2))
+        return 0
+
+    parser.error(f"Unsupported command: {args.command}")
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
 ```
 
 Why these are useful:
@@ -785,7 +819,16 @@ Why these are useful:
 - `delete_chunks_by_source()` is safer than clearing the full collection when re-ingesting one file.
 - `clear_vector_store()` is useful during development when you want a clean slate.
 
-You can keep these as backend utilities first, then optionally expose them later in a debug page, admin API, or Streamlit sidebar tools.
+This keeps the main RAG path in `src/vector_store.py` focused on application behavior while putting inspection and admin tasks in a separate module.
+
+Run it with:
+
+```bash
+uv run python -m src.vector_store_utils stats
+uv run python -m src.vector_store_utils list-metadata --limit 20
+uv run python -m src.vector_store_utils delete-source my_file.pdf --yes
+uv run python -m src.vector_store_utils clear --yes
+```
 
 ---
 
