@@ -95,7 +95,7 @@ def format_evidence(chunks: list[RetrievedChunk]) -> str:
         formatted_chunks.append(
             "\n".join(
                 [
-                    f"[Evidence {index}] Source: {chunk.source}{page_text}",
+                    f"Citation: [{index}] {chunk.source}{page_text}",
                     f"Chunk ID: {chunk.chunk_id}",
                     f"Text: {chunk.text}",
                 ]

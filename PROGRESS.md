@@ -59,6 +59,7 @@ The project now has a working Streamlit app on top of the RAG pipeline, includin
 - Verified retriever tests pass with `PYTHONPATH=. uv run pytest tests/test_retriever.py`
 - Implemented [prompts.py](src/prompts.py) with centralized prompt templates for query planning, evidence evaluation, grounded answers, and quiz generation
 - Added prompt rules that reinforce evidence-only answers, missing-evidence handling, and citation expectations
+- Updated grounded-answer citation instructions to require stable numeric citation IDs like `[1]`, `[2]`, and `[3]`
 - Added `AgentState` to [schemas.py](src/schemas.py) so the LangGraph workflow has an explicit typed state contract
 - Created [agent.py](src/agent.py) as the orchestration layer for the agentic RAG workflow
 - Added a shared `ChatOpenAI` instance in [agent.py](src/agent.py) with `temperature=0` for reliability-focused planning, evaluation, retrying, and answer generation
@@ -66,6 +67,7 @@ The project now has a working Streamlit app on top of the RAG pipeline, includin
 - Implemented structured retry-planner output with `RetryQueryPlan`
 - Implemented structured evaluator output with `EvidenceEvaluation`
 - Implemented `format_evidence()` to render retrieved chunks into a prompt-friendly evidence block with source, page, chunk ID, and text
+- Upgraded `format_evidence()` to assign stable citation labels such as `Citation: [1] source, page X` for easier grounding checks
 - Implemented `plan_queries()` to turn the user question into retrieval-friendly search queries with fallback to the original question
 - Upgraded planning from raw text parsing to structured output after discussing reliability tradeoffs
 - Implemented `retrieve_evidence()` to run retrieval across multiple queries, deduplicate by `chunk_id`, and count retrieval attempts
@@ -94,6 +96,7 @@ The project now has a working Streamlit app on top of the RAG pipeline, includin
 - Created [tests/test_agent.py](tests/test_agent.py)
 - Added [tests/conftest.py](tests/conftest.py) so pytest can import the local `src` package reliably
 - Tested evidence formatting behavior
+- Updated agent tests to verify the Step 18 citation-label format and `[1]`-style answer citations
 - Tested planner structured output, whitespace trimming, and fallback behavior
 - Tested retrieval deduplication across multiple queries
 - Tested retrieval accumulation across retries

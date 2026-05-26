@@ -31,7 +31,7 @@ You are a careful research assistant. Answer the user's question using only the 
 Rules:
 - Use only the evidence below.
 - If the evidence is not enough, say what is missing.
-- Include citations like [source, page X] after supported claims.
+- Use citation IDs exactly like [1], [2], or [3] after supported claims.
 - Do not invent facts.
 
 Question:

@@ -84,7 +84,7 @@ def test_format_evidence_includes_source_page_chunk_id_and_text() -> None:
 
     formatted = format_evidence(chunks)
 
-    assert "[Evidence 1] Source: sample.txt, page 2" in formatted
+    assert "Citation: [1] sample.txt, page 2" in formatted
     assert "Chunk ID: sample.txt::page-2::chunk-0" in formatted
     assert "Text: Important supporting passage." in formatted
 
@@ -103,7 +103,7 @@ def test_format_evidence_omits_page_label_when_page_is_missing() -> None:
 
     formatted = format_evidence(chunks)
 
-    assert "[Evidence 1] Source: notes.md" in formatted
+    assert "Citation: [1] notes.md" in formatted
     assert ", page" not in formatted
 
 
@@ -335,7 +335,7 @@ def test_evaluate_evidence_marks_state_sufficient_when_llm_says_sufficient(
     assert initial_state["evidence_sufficient"] is False
     assert len(fake_llm.prompts) == 1
     assert "Question:\nWhat is the main conclusion?" in fake_llm.prompts[0]
-    assert "[Evidence 1] Source: doc.md, page 4" in fake_llm.prompts[0]
+    assert "Citation: [1] doc.md, page 4" in fake_llm.prompts[0]
     assert "Chunk ID: doc::page-4::chunk-0" in fake_llm.prompts[0]
     assert "Text: A grounded supporting passage." in fake_llm.prompts[0]
 
@@ -390,7 +390,7 @@ def test_rewrite_queries_for_retry_overwrites_queries_with_retry_plan(
     assert "The first retrieval attempt did not find enough evidence." in fake_llm.prompts[0]
     assert "User question:\nHow does the system validate its findings?" in fake_llm.prompts[0]
     assert "Previous search queries:\n- validate findings\n- system validation" in fake_llm.prompts[0]
-    assert "[Evidence 1] Source: doc.md, page 2" in fake_llm.prompts[0]
+    assert "Citation: [1] doc.md, page 2" in fake_llm.prompts[0]
 
 
 def test_rewrite_queries_for_retry_falls_back_to_original_question_when_empty(
@@ -415,7 +415,7 @@ def test_rewrite_queries_for_retry_falls_back_to_original_question_when_empty(
 
 def test_generate_answer_uses_answer_prompt_and_stores_response(monkeypatch) -> None:
     """Standard questions should use the answer prompt and save the model's reply."""
-    fake_llm = FakeAnswerLLM("The main conclusion is supported by the document. [doc.md, page 3]")
+    fake_llm = FakeAnswerLLM("The main conclusion is supported by the document. [1]")
     monkeypatch.setattr("src.agent.llm", fake_llm)
     retrieved_chunk = RetrievedChunk(
         chunk_id="doc::page-3::chunk-0",
@@ -435,12 +435,13 @@ def test_generate_answer_uses_answer_prompt_and_stores_response(monkeypatch) -> 
 
     result = generate_answer(initial_state)
 
-    assert result["answer"] == "The main conclusion is supported by the document. [doc.md, page 3]"
+    assert result["answer"] == "The main conclusion is supported by the document. [1]"
     assert initial_state["answer"] == ""
     assert len(fake_llm.prompts) == 1
     assert "Final answer:" in fake_llm.prompts[0]
     assert "Question:\nWhat is the main conclusion?" in fake_llm.prompts[0]
-    assert "[Evidence 1] Source: doc.md, page 3" in fake_llm.prompts[0]
+    assert "Citation: [1] doc.md, page 3" in fake_llm.prompts[0]
+    assert "Use citation IDs exactly like [1], [2], or [3] after supported claims." in fake_llm.prompts[0]
 
 
 def test_generate_answer_uses_quiz_prompt_when_question_requests_quiz(
